@@ -3,12 +3,15 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 import random
 
+
 class Sampler:
 
     def __init__(self):
         pass
 
-    def add_noise(self, original_value: float, feature_name: str, train_data: pd.DataFrame) -> float:
+    def add_noise(
+        self, original_value: float, feature_name: str, train_data: pd.DataFrame
+    ) -> float:
         """Adds noise to the original value by sampling from normal distribution
         with mean zero and standard deviation as estimated from training dataset for that feature.
 
@@ -26,9 +29,13 @@ class Sampler:
         else:
             return original_value + noise
 
-    def sample_regression_with_noise(self, train_data: pd.DataFrame, 
-                                     input: pd.DataFrame, cols_with_missing_values: list[str], 
-                                     target_feature: str) -> float:
+    def sample_regression_with_noise(
+        self,
+        train_data: pd.DataFrame,
+        input: pd.DataFrame,
+        cols_with_missing_values: list[str],
+        target_feature: str,
+    ) -> float:
         """Samples imputation candidates via regression and adding noise.
         This corresponds to the predict + noise method in Van Buuren (2018) ch. 3.1.2
 
@@ -43,11 +50,19 @@ class Sampler:
         if len(cols_with_missing_values) == 0:
             raise RuntimeError("Sampler invoked but no missing values identified!")
         elif len(cols_with_missing_values) != 1:
-            raise NotImplementedError(f"Sampling implemented for precisely one missing value, were: {cols_with_missing_values}")
-        
+            raise NotImplementedError(
+                f"Sampling implemented for precisely one missing value, were: {cols_with_missing_values}"
+            )
+
         missing_feature = cols_with_missing_values[0]
-        X_train = train_data.loc[:, (train_data.columns != missing_feature) & (train_data.columns != target_feature)]
+        X_train = train_data.loc[
+            :,
+            (train_data.columns != missing_feature)
+            & (train_data.columns != target_feature),
+        ]
         y_train = train_data.loc[:, missing_feature]
         regression_model = LinearRegression().fit(X_train, y_train)
-        sampled = regression_model.predict(input.loc[:, (input.columns != missing_feature)])[0]
+        sampled = regression_model.predict(
+            input.loc[:, (input.columns != missing_feature)]
+        )[0]
         return self.add_noise(sampled, missing_feature, train_data)
