@@ -39,21 +39,12 @@ class Sampler:
         """Samples imputation candidates via regression and adding noise.
         This corresponds to the predict + noise method in Van Buuren (2018) ch. 3.1.2
 
-        :param pd.DataFrame train_dataset: entire train dataset
-        :param pd.DataFrame input: input with the missing value(s)
+        :param pd.DataFrame train_data: training data
+        :param pd.DataFrame input: input dataframe with one row with the missing value(s)
         :param list[str] cols_with_missing_values: columns with missing values (for now assumes exactly one)
         :param str target_feature: original target feature to predict
-        :raises RuntimeError: if no missing values were provided
-        :raises NotImplementedError: for now, if more than 1 missing values provided
         :return float: sampled value
         """
-        if len(cols_with_missing_values) == 0:
-            raise RuntimeError("Sampler invoked but no missing values identified!")
-        elif len(cols_with_missing_values) != 1:
-            raise NotImplementedError(
-                f"Sampling implemented for precisely one missing value, were: {cols_with_missing_values}"
-            )
-
         missing_feature = cols_with_missing_values[0]
         X_train = train_data.loc[
             :,

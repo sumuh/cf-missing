@@ -37,7 +37,6 @@ def load_data() -> pd.DataFrame:
     dir_path = os.path.dirname(os.path.realpath(__file__))
     data_path = f"{dir_path}/../data/diabetes.csv"
     data = pd.read_csv(data_path)
-    print(data.head())
     return data
 
 
@@ -51,7 +50,7 @@ def get_predictor_names(data: pd.DataFrame, target_name: str) -> list[str]:
     return data.loc[:, data.columns != target_name].columns.values
 
 
-def get_col_names_with_missing_values(sample: pd.DataFrame) -> list[str]:
+def get_cols_with_missing_values(sample: pd.DataFrame) -> list[str]:
     """Returns column names where the value is missing.
 
     :param pd.DataFrame sample: dataframe with one row

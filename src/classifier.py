@@ -5,6 +5,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
+from sklearn.exceptions import NotFittedError
 
 
 class Classifier:
@@ -12,13 +13,11 @@ class Classifier:
 
     def __init__(
         self,
-        train_data: pd.DataFrame,
         predictor_names: list[str],
         target_name: str,
         threshold: float = 0.5,
     ):
         self.pipeline = self.init_pipeline(predictor_names)
-        self.train_data = train_data
         self.predictor_names = predictor_names
         self.target_name = target_name
         self.threshold = threshold
@@ -38,10 +37,13 @@ class Classifier:
             steps=[("col_trans", col_trans), ("model", LogisticRegression())]
         )
 
-    def train(self):
-        """Train model on data given to class on init."""
-        X = self.train_data[self.predictor_names]
-        y = np.array(self.train_data[self.target_name]).ravel()
+    def train(self, train_data: pd.DataFrame):
+        """Train model on given data.
+
+        :param pd.DataFrame train_data: training data for model
+        """
+        X = train_data[self.predictor_names]
+        y = np.array(train_data[self.target_name]).ravel()
         self.pipeline.fit(X, y)
 
     def predict(self, input: pd.DataFrame) -> tuple[int, float]:
@@ -52,7 +54,11 @@ class Classifier:
         :param pd.DataFrame input: input df with one row
         :return tuple[int, float]: tuple with predicted class and probability that predicted class was 1
         """
-        res = self.pipeline.predict_proba(input)[0]
+        try:
+            res = self.pipeline.predict_proba(input)[0]
+        except NotFittedError:
+            raise NotFittedError("Classifier.train() must be called before predict()!")
+
         prob_positive = res[1]
         if prob_positive >= self.threshold:
             predicted_class = 1
