@@ -42,16 +42,15 @@ class Classifier:
         y = np.array(self.train_data[self.target_name]).ravel()
         self.pipeline.fit(X, y)
 
-    def predict(self, input: dict) -> tuple[int, float]:
+    def predict(self, input: pd.DataFrame) -> tuple[int, float]:
         """Get classification for new instance from trained model.
         Class 1 means person is predicted to have diabetes,
         class 0 means person is predicted to not have diabetes. 
 
-        :param dict input: input in form of 'feature_name': value
+        :param pd.DataFrame input: input df with one row
         :return tuple[int, float]: tuple with predicted class and probability that predicted class was 1
         """
-        input_df = pd.DataFrame([input])
-        res = self.pipeline.predict_proba(input_df)[0]
+        res = self.pipeline.predict_proba(input)[0]
         prob_positive = res[1]
         if prob_positive >= self.threshold:
             predicted_class = 1

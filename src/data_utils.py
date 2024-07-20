@@ -46,6 +46,14 @@ def get_predictor_names(data: pd.DataFrame, target_name: str) -> list[str]:
     """
     return data.loc[:, data.columns != target_name].columns.values
 
+def get_col_names_with_missing_values(sample: pd.DataFrame) -> list[str]:
+    """Returns column names where the value is missing.
+
+    :param pd.DataFrame sample: dataframe with one row
+    :return list[str]: names of columns with missing values
+    """
+    return [col_name for col_name in sample.columns if pd.isnull(sample.loc[0, col_name])]
+
 def get_test_input_1() -> dict:
     """Test input for which we expect classification outcome=0.
 
