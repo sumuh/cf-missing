@@ -1,14 +1,18 @@
 import pandas as pd
+import numpy as np
 import os
 import matplotlib.pyplot as plt
 
 
-def get_target_name() -> str:
-    """Return pre-defined name of target variable.
+def load_data() -> pd.DataFrame:
+    """Loads the PIMA Indians diabetes dataset from data/
 
-    :return str: target variable name
+    :return pd.DataFrame: raw dataset
     """
-    return "Outcome"
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    data_path = f"{dir_path}/../data/diabetes.csv"
+    data = pd.read_csv(data_path)
+    return data
 
 
 def explore_data(data: pd.DataFrame):
@@ -29,36 +33,53 @@ def explore_data(data: pd.DataFrame):
     print(f"{symbol*42}")
 
 
-def load_data() -> pd.DataFrame:
-    """Loads the PIMA Indians diabetes dataset from data/
+def get_target_index(data: pd.DataFrame, target_name: str) -> int:
+    """Return index of target variable based on name.
 
-    :return pd.DataFrame: raw dataset
-    """
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    data_path = f"{dir_path}/../data/diabetes.csv"
-    data = pd.read_csv(data_path)
-    return data
-
-
-def get_predictor_names(data: pd.DataFrame, target_name: str) -> list[str]:
-    """Returns all other column names from data except target.
-
-    :param pd.DataFrame data: dataframe
+    :param pd.DataFrame data: dataset
     :param str target_name: target feature name
-    :return list[str]: names of predictors
+    :return int: target feature index
     """
-    return data.loc[:, data.columns != target_name].columns.values
+    return data.columns.get_loc(target_name)
 
 
-def get_cols_with_missing_values(sample: pd.DataFrame) -> list[str]:
-    """Returns column names where the value is missing.
+def get_cat_indices(data: pd.DataFrame, target_index: int) -> np.array:
+    """Returns indices of categorical predictors.
 
-    :param pd.DataFrame sample: dataframe with one row
-    :return list[str]: names of columns with missing values
+    :param pd.DataFrame data: dataset
+    :param int: target feature index
+    :return np.array: indices of categorical predictors
     """
-    return [
-        col_name for col_name in sample.columns if pd.isnull(sample.loc[0, col_name])
-    ]
+    predictors = data.drop(data.columns[target_index], axis=1)
+    cat_predictor_names = predictors.select_dtypes(include=["object"]).columns
+    return np.array(
+        [data.columns.get_loc(predictor_name) for predictor_name in cat_predictor_names]
+    )
+
+
+def get_num_indices(data: pd.DataFrame, target_index: int) -> np.array:
+    """Returns indices of numeric predictors.
+
+    :param pd.DataFrame data: dataset
+    :param int: target feature index
+    :return np.array: indices of numeric predictors
+    """
+    predictors = data.drop(data.columns[target_index], axis=1)
+    num_predictor_names = predictors.select_dtypes(
+        include=["int", "float"]
+    ).columns.to_list()
+    return np.array(
+        [data.columns.get_loc(predictor_name) for predictor_name in num_predictor_names]
+    )
+
+
+def get_indices_with_missing_values(sample: np.array) -> np.array:
+    """Returns indices where the value is missing.
+
+    :param np.array sample: 1D input array
+    :return np.array: indices of features with missing values
+    """
+    return np.where(np.isnan(sample))[0]
 
 
 def get_test_input_1() -> dict:

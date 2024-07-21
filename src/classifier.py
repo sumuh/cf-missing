@@ -13,48 +13,53 @@ class Classifier:
 
     def __init__(
         self,
-        predictor_names: list[str],
-        target_name: str,
+        num_predictor_indices: list[int],
         threshold: float = 0.5,
     ):
-        self.pipeline = self.init_pipeline(predictor_names)
-        self.predictor_names = predictor_names
-        self.target_name = target_name
+        self.pipeline = self.init_pipeline(num_predictor_indices)
         self.threshold = threshold
 
-    def init_pipeline(self, predictor_names: list[str]) -> Pipeline:
+    def init_pipeline(self, num_predictor_indices: np.array) -> Pipeline:
         """Build pipeline for logistic regression.
 
-        :param list[str] predictor_names: predictor names
+        :param np.array num_predictor_indices: indices of numeric predictors in training data
         :return Pipeline: Pipeline with scaler and logistic regression model
         """
         num_pipeline = Pipeline(steps=[("scale", MinMaxScaler())])
         col_trans = ColumnTransformer(
-            transformers=[("num_pipeline", num_pipeline, predictor_names)],
+            transformers=[("num_pipeline", num_pipeline, num_predictor_indices)],
             remainder="drop",
         )
         return Pipeline(
             steps=[("col_trans", col_trans), ("model", LogisticRegression())]
         )
 
-    def train(self, train_data: pd.DataFrame):
+    def train(self, X_train: np.array, y_train: np.array):
         """Train model on given data.
 
-        :param pd.DataFrame train_data: training data for model
+        :param np.array X_train: predictor training data for model
+        :param np.array y_train: target training data for model
         """
-        X = train_data[self.predictor_names]
-        y = np.array(train_data[self.target_name]).ravel()
-        self.pipeline.fit(X, y)
+        self.pipeline.fit(X_train, y_train)
 
-    def predict(self, input: pd.DataFrame) -> tuple[int, float]:
-        """Get classification for new instance from trained model.
-        Class 1 means person is predicted to have diabetes,
-        class 0 means person is predicted to not have diabetes.
+    def predict(self, input: np.array) -> int:
+        """Get classification (0/1) for new instance from trained model.
 
-        :param pd.DataFrame input: input df with one row
+        :param np.array input: 1D input array to predict
+        :return int: predicted class
+        """
+        prediction = self.predict_with_proba(input)
+        return prediction[0]
+
+    def predict_with_proba(self, input: np.array) -> tuple[int, float]:
+        """Get classification (0/1) for new instance from trained model.
+
+        :param np.array input: 1D input array to predict
         :return tuple[int, float]: tuple with predicted class and probability that predicted class was 1
         """
         try:
+            if len(input.shape) == 1:
+                input = [input]
             res = self.pipeline.predict_proba(input)[0]
         except NotFittedError:
             raise NotFittedError("Classifier.train() must be called before predict()!")
