@@ -29,7 +29,7 @@ class CounterfactualGenerator:
         )
         return gs_model.find_counterfactual()
 
-    def get_counterfactuals(self, input: np.array, method: str) -> np.array:
+    def get_counterfactual(self, input: np.array, method: str) -> np.array:
         if method == "GS":
             explanation = self.get_growing_spheres_counterfactual(input)
         else:
@@ -37,7 +37,11 @@ class CounterfactualGenerator:
         return explanation
 
     def generate_explanations(
-        self, input: np.array, indices_with_missing_values: np.array, n: int
+        self,
+        input: np.array,
+        indices_with_missing_values: np.array,
+        n: int,
+        method: str = "GS",
     ) -> np.array:
         """Generate explanation for input vector(s).
 
@@ -46,10 +50,7 @@ class CounterfactualGenerator:
         :param int n: number of explanations to generate
         :return np.array: array with n rows
         """
-        if len(input) == 1:
-            # Generate n explanations based on single input vector
-            explanations = self.get_counterfactuals(input, method="GS")
-        else:
-            # Generate n explanations based on multiple input vecotrs (from multiple imputation)
-            explanations = self.get_counterfactuals(input, method="GS")
-        return np.array([explanations])
+        counterfactuals = np.apply_along_axis(
+            self.get_counterfactual, 1, input, method=method
+        )
+        return counterfactuals

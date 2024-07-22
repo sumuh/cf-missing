@@ -55,5 +55,5 @@ class Sampler:
 
         input_mask = np.ones(len(input), dtype=bool)
         input_mask[missing_feature_index] = False
-        sampled = regression_model.predict(input[:, input_mask])[0]
+        sampled = regression_model.predict([input[input_mask]])[0]
         return self.add_noise(sampled, missing_feature_index, train_data)

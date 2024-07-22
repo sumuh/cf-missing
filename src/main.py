@@ -37,14 +37,22 @@ def main():
     input.at[0, "Insulin"] = pd.NA
     input = input.to_numpy().ravel()
 
+    n = 3
     indices_with_missing_values = get_indices_with_missing_values(input)
     if len(indices_with_missing_values) > 0:
         imputer = Imputer()
-        input = imputer.mean_imputation(data_np, input, indices_with_missing_values)
+        # input = imputer.mean_imputation(data_np, input, indices_with_missing_values, n)
+        input = imputer.multiple_imputation(
+            data_np, input, indices_with_missing_values, target_index, n
+        )
+    else:
+        input = np.array([input])
 
     print(f"Input: {input}")
-    prediction, probability = classifier.predict_with_proba(input)
-    print(f"Prediction was {prediction}, probability of 1 was {probability}\n")
+
+    for row in range(input.shape[0]):
+        prediction, probability = classifier.predict_with_proba(input[row, :])
+        print(f"Prediction was {prediction}, probability of 1 was {probability}\n")
 
     cf_generator = CounterfactualGenerator(classifier, data, target_index)
 
@@ -53,9 +61,14 @@ def main():
             input, indices_with_missing_values, 3
         )
 
-    print(f"Counterfactual: {counterfactuals[0]}")
-    prediction_cf, probability_cf = classifier.predict_with_proba(counterfactuals[0])
-    print(f"Prediction was {prediction_cf}, probability of 1 was {probability_cf}\n")
+    for row in range(len(counterfactuals)):
+        print(f"Counterfactual: {counterfactuals[row, :]}")
+        prediction_cf, probability_cf = classifier.predict_with_proba(
+            counterfactuals[row, :]
+        )
+        print(
+            f"Prediction was {prediction_cf}, probability of 1 was {probability_cf}\n"
+        )
 
 
 if __name__ == "__main__":
