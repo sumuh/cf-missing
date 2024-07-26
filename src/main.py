@@ -4,6 +4,7 @@ import numpy as np
 from .classifier import Classifier
 from .counterfactual_generator import CounterfactualGenerator
 from .imputer import Imputer
+from .evaluation import Evaluator, perform_loocv_evaluation
 from .data_utils import (
     load_data,
     explore_data,
@@ -16,7 +17,7 @@ from .data_utils import (
 )
 
 
-def main():
+def test_single_instance():
     data = load_data()
     print(data)
     # explore_data(data)
@@ -37,7 +38,7 @@ def main():
     input.at[0, "Insulin"] = pd.NA
     input = input.to_numpy().ravel()
 
-    n = 3
+    n = 1
     indices_with_missing_values = get_indices_with_missing_values(input)
     if len(indices_with_missing_values) > 0:
         imputer = Imputer()
@@ -61,14 +62,22 @@ def main():
             input, indices_with_missing_values, 3
         )
 
-    for row in range(len(counterfactuals)):
-        print(f"Counterfactual: {counterfactuals[row, :]}")
-        prediction_cf, probability_cf = classifier.predict_with_proba(
-            counterfactuals[row, :]
-        )
-        print(
-            f"Prediction was {prediction_cf}, probability of 1 was {probability_cf}\n"
-        )
+        if counterfactuals.ndim == 1:
+            counterfactuals = np.array([counterfactuals])
+
+        evaluator = Evaluator(X_train)
+        evaluator.evaluate_explanation(input[0], counterfactuals, classifier.predict, 0)
+
+
+def main():
+    data = load_data()
+    # TODO: configs for different runs
+    evaluation_config = {
+        "classifiers": ["LogisticRegression"],
+        "missing_data_mechanisms": ["MCAR", "MAR", "MNAR"],
+    }
+    # TODO: make combinations of different evaluation configs
+    perform_loocv_evaluation(data, evaluation_config)
 
 
 if __name__ == "__main__":

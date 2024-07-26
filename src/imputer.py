@@ -42,7 +42,10 @@ class Imputer:
         index_of_missing_feature = indices_with_missing_values[0]
         feature_mean = np.mean(train_data[:, index_of_missing_feature])
         input[index_of_missing_feature] = feature_mean
-        imputed_inputs = np.repeat([input], n, axis=0)
+        if n == 1:
+            imputed_inputs = np.array([input])
+        else:
+            imputed_inputs = np.repeat([input], n, axis=0)
         return imputed_inputs
 
     def subgroup_mean_imputation(

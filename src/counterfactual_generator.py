@@ -25,11 +25,11 @@ class CounterfactualGenerator:
             first_radius=5.0,
             dicrease_radius=5.0,
             layer_shape="sphere",
-            # verbose=True
+            # verbose=True,
         )
         return gs_model.find_counterfactual()
 
-    def get_counterfactual(self, input: np.array, method: str) -> np.array:
+    def get_counterfactuals(self, input: np.array, method: str) -> np.array:
         if method == "GS":
             explanation = self.get_growing_spheres_counterfactual(input)
         else:
@@ -50,7 +50,5 @@ class CounterfactualGenerator:
         :param int n: number of explanations to generate
         :return np.array: array with n rows
         """
-        counterfactuals = np.apply_along_axis(
-            self.get_counterfactual, 1, input, method=method
-        )
+        counterfactuals = self.get_counterfactuals(input[0], method)
         return counterfactuals
