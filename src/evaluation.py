@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import time
 from typing import Callable
 
 from .classifier import Classifier
@@ -150,6 +151,7 @@ class Evaluator:
         explanation: np.array,
         prediction_func: Callable,
         target_class: int,
+        wall_time: float,
     ) -> tuple:
         """Return evaluation metrics for a set of alternative vectors.
 
@@ -157,6 +159,7 @@ class Evaluator:
         :param np.array explanation: set of alternative vectors
         :param Callable prediction_func: classifier prediction function
         :param int target_class: class that counterfactual should predict
+        :param float wall_time: wall clock runtime for generating cf
         :return tuple: set of metrics
         """
         n_vectors = len(explanation)
@@ -166,7 +169,14 @@ class Evaluator:
         )
         diversity = self.get_diversity(explanation)
         avg_sparsity = self.get_average_sparsity(original_vector, explanation)
-        return (n_vectors, valid_ratio, avg_dist_from_original, diversity, avg_sparsity)
+        return {
+            "n_vectors": n_vectors,
+            "valid_ratio": valid_ratio,
+            "avg_dist_from_original": avg_dist_from_original,
+            "diversity": diversity,
+            "avg_sparsity": avg_sparsity,
+            "runtime_seconds": wall_time,
+        }
 
 
 def perform_loocv_evaluation(data: pd.DataFrame, config: dict):
@@ -179,18 +189,28 @@ def perform_loocv_evaluation(data: pd.DataFrame, config: dict):
 
     print(data.head())
 
-    target_index = get_target_index(data, "Outcome")
+    target_index = get_target_index(data, config.get("target_name"))
     cat_indices = get_cat_indices(data, target_index)
     num_indices = get_num_indices(data, target_index)
     predictor_indices = np.sort(np.concatenate([cat_indices, num_indices])).astype(int)
 
-    print(f"cat_indices: {type(cat_indices)} {cat_indices}")
-    print(f"num_indices: {type(num_indices)} {num_indices}")
-    print(f"predictor_indices: {type(predictor_indices)} {predictor_indices}")
-    print(f"target_index: {type(target_index)} {target_index}")
+    # print(f"cat_indices: {type(cat_indices)} {cat_indices}")
+    # print(f"num_indices: {type(num_indices)} {num_indices}")
+    # print(f"predictor_indices: {type(predictor_indices)} {predictor_indices}")
+    # print(f"target_index: {type(target_index)} {target_index}")
 
     classifier = Classifier(num_indices)
     data = data.to_numpy()
+
+    metric_names = [
+        "n_vectors",
+        "valid_ratio",
+        "avg_dist_from_original",
+        "diversity",
+        "avg_sparsity",
+        "runtime_seconds",
+    ]
+    metrics = {metric: [] for metric in metric_names}
 
     for row_ind in range(len(data)):
         test_instance = data[row_ind, :].ravel()
@@ -214,15 +234,30 @@ def perform_loocv_evaluation(data: pd.DataFrame, config: dict):
 
         prediction = classifier.predict(test_instance)
         if prediction == 1:
+            time_1 = time.time()
             counterfactuals = cf_generator.generate_explanations(
                 test_instance, None, None
             )
+            time_2 = time.time()
+            wall_time = time_2 - time_1
 
             if counterfactuals.ndim == 1:
                 counterfactuals = np.array([counterfactuals])
 
             evaluator = Evaluator(X_train)
-            metrics = evaluator.evaluate_explanation(
-                test_instance[0], counterfactuals, classifier.predict, 0
+            test_instance_metrics = evaluator.evaluate_explanation(
+                test_instance[0], counterfactuals, classifier.predict, 0, wall_time
             )
-            print(metrics)
+            for metric_name in metric_names:
+                metrics.get(metric_name).append(test_instance_metrics.get(metric_name))
+
+    averages = [np.mean(np.array(metric_arr)) for metric_arr in metrics.values()]
+    final_metric_names = [
+        "avg_" + metric_name if not metric_name.startswith("avg_") else metric_name
+        for metric_name in metric_names
+    ]
+    avg_metrics = {
+        metric_name: avg_metric
+        for metric_name, avg_metric in zip(final_metric_names, averages)
+    }
+    return avg_metrics

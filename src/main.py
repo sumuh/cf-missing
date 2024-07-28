@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
-
+import os
+from datetime import datetime
 from .classifier import Classifier
 from .counterfactual_generator import CounterfactualGenerator
 from .imputer import Imputer
@@ -70,14 +71,39 @@ def test_single_instance():
 
 
 def main():
+    save_to_file = True
+
+    if save_to_file:
+        results_dir = (
+            f"{os.path.dirname(os.path.realpath(__file__))}/../evaluation_results"
+        )
+        current_time = datetime.now()
+        formatted_time = current_time.strftime("%d-%m-%Y-%H-%M-%S")
+        results_filename = f"{results_dir}/results-{formatted_time}.txt"
+
     data = load_data()
     # TODO: configs for different runs
     evaluation_config = {
         "classifiers": ["LogisticRegression"],
         "missing_data_mechanisms": ["MCAR", "MAR", "MNAR"],
+        "dataset_name": "Pima Indians Diabetes",
+        "target_name": "Outcome",
     }
     # TODO: make combinations of different evaluation configs
-    perform_loocv_evaluation(data, evaluation_config)
+    results = perform_loocv_evaluation(data, evaluation_config)
+    print(f"config: {evaluation_config}")
+    print(f"results: {results}")
+
+    if save_to_file:
+        # Pretty print config and results to file
+        with open(results_filename, "w") as results_file:
+            config_str = "config\n" + "\n".join(
+                [f"{item[0]}\t{item[1]}" for item in evaluation_config.items()]
+            )
+            results_str = "results\n" + "\n".join(
+                [f"{item[0]}\t{item[1]}" for item in results.items()]
+            )
+            results_file.write(f"{config_str}\n\n{results_str}")
 
 
 if __name__ == "__main__":
