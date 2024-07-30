@@ -164,6 +164,8 @@ class Evaluator:
         """
         n_vectors = len(explanation)
         valid_ratio = self.get_valid_ratio(explanation, prediction_func, target_class)
+
+        # TODO: avg distance should be from original with real, not imputed, value
         avg_dist_from_original = self.get_average_distance_from_original(
             original_vector, explanation
         )
@@ -235,9 +237,7 @@ def perform_loocv_evaluation(data: pd.DataFrame, config: dict):
         prediction = classifier.predict(test_instance)
         if prediction == 1:
             time_1 = time.time()
-            counterfactuals = cf_generator.generate_explanations(
-                test_instance, None, None
-            )
+            counterfactuals = cf_generator.generate_explanations(test_instance, None, 3)
             time_2 = time.time()
             wall_time = time_2 - time_1
 

@@ -264,9 +264,21 @@ class GrowingSpheres:
         return out
 
 
-class DirectedGrowingSpheres:  # Warning: Not finished, do not use
+class DiverseGrowingSpheres:
     """
-    class to fit the Original Growing Spheres algorithm
+    class to fit the Diverse Growing Spheres algorithm
+
+    Inputs:
+    obs_to_interprete: instance whose prediction is to be interpreded
+    prediction_fn: prediction function, must return an integer label
+    caps: min max values of the explored area. Right now: if not None, the minimum and maximum values of the
+    target_class: target class of the CF to be generated. If None, the algorithm will look for any CF that is predicted to belong to a different class than obs_to_interprete
+    n_in_layer: number of observations to generate at each step # to do
+    layer_shape: shape of the layer to explore the space
+    first_radius: radius of the first hyperball generated to explore the space
+    dicrease_radius: parameter controlling the size of the are covered at each step
+    sparse: controls the sparsity of the final solution (boolean)
+    verbose: text
     """
 
     def __init__(
@@ -275,29 +287,49 @@ class DirectedGrowingSpheres:  # Warning: Not finished, do not use
         prediction_fn,
         target_class=None,
         caps=None,
-        n_in_layer=10000,  # en vrai n_in_layer depend de rayon pour garantir meme densite?
+        n_in_layer=2000,
+        layer_shape="ring",
         first_radius=0.1,
-        dicrease_radius=5,
+        dicrease_radius=10,
+        sparse=True,
+        n_results=3,
+        verbose=False,
     ):
         """ """
         self.obs_to_interprete = obs_to_interprete
         self.prediction_fn = prediction_fn
-        y_class = int(
-            prediction_fn(obs_to_interprete.reshape(1, -1))[0][1] > 0.5
-        )  # marche que pour 2 classes là. en vrai sinon il faut prendre l'argmax
-        self.y_obs = prediction_fn(obs_to_interprete.reshape(1, -1))[0][1]
+        self.y_obs = prediction_fn(obs_to_interprete.reshape(1, -1))
 
-        # if target_class == None:
-        #    target_class = 1 - self.y_obs
-        # self.target_class = target_class
-        self.target_class = 1 - y_class
+        # if target_class == None: #To change: works only for binary classification...
+        # target_class = 1 - self.y_obs
 
+        self.target_class = target_class
         self.caps = caps
         self.n_in_layer = n_in_layer
         self.first_radius = first_radius
-        self.dicrease_radius = dicrease_radius
+        if dicrease_radius <= 1.0:
+            raise ValueError("Parameter dicrease_radius must be > 1.0")
+        else:
+            self.dicrease_radius = dicrease_radius
 
-    def find_counterfactual(self):  # nul
+        self.sparse = sparse
+        self.n_results = n_results
+        if layer_shape in ["ring", "ball", "sphere"]:
+            self.layer_shape = layer_shape
+        else:
+            raise ValueError(
+                "Parameter layer_shape must be either 'ring', 'ball' or 'sphere'."
+            )
+
+        self.verbose = verbose
+
+        if int(self.y_obs) != self.y_obs:
+            raise ValueError("Prediction function should return a class (integer)")
+
+    def find_counterfactual(self):
+        """
+        Finds the decision border then perform projections to make the explanation sparse and diverse.
+        """
         ennemies_ = self.exploration()
         closest_ennemy_ = sorted(
             ennemies_,
@@ -305,110 +337,194 @@ class DirectedGrowingSpheres:  # Warning: Not finished, do not use
                 self.obs_to_interprete.reshape(1, -1), x.reshape(1, -1)
             ),
         )[0]
-        out = self.feature_selection(closest_ennemy_)
+        self.e_star = closest_ennemy_
+        if self.sparse == True:
+            out = np.array(self.feature_selection(closest_ennemy_))
+        else:
+            out = closest_ennemy_
         return out
 
     def exploration(self):
+        """
+        Exploration of the feature space to find the decision boundary. Generation of instances in growing hyperspherical layers.
+        """
         n_ennemies_ = 999
         radius_ = self.first_radius
-        iteration = 0
 
-        while (
-            n_ennemies_ > 0
-        ):  # initial step idem: on veut une sphère qui n'a pas d'ennemi (pas le plus smart; peut être garder les derniers ennemis serait intelligent... bref
-            first_layer_, y_layer_ = self.layer_with_preds(
-                self.obs_to_interprete, radius_, self.caps, self.n_in_layer
+        while n_ennemies_ > 0:
+
+            first_layer_ = self.ennemies_in_layer_(
+                radius=radius_, caps=self.caps, n=self.n_in_layer, first_layer=True
             )
-            n_ennemies_ = first_layer_[np.where(y_layer_ > 0.5)].shape[
-                0
-            ]  # IMPORTANT; PAREIL NE MARCHE QUE POUR CLASSIF BINAIRE. IL FAUDRA REPENSER CA POUR MULTILCASSE
-            if iteration != 0:
-                radius_ = (
-                    radius_ / self.dicrease_radius
-                )  # IMPORTANT: Le Dicrease devrait pouvoir se faire en fonction du nombre d'ennemis trouves: si beaucoup, on peut reduire de plus que si 3 ennemis.
-                print(
-                    "%d ennemies found in initial sphere. Zooming in..." % n_ennemies_
-                )
-            iteration += 1
 
+            n_ennemies_ = first_layer_.shape[0]
+            radius_ = (
+                radius_ / self.dicrease_radius
+            )  # radius gets dicreased no matter, even if no enemy?
+
+            if self.verbose == True:
+                print("%d ennemies found in initial hyperball." % n_ennemies_)
+
+                if n_ennemies_ > 0:
+                    print("Zooming in...")
         else:
-            print("Exploring...")
+            if self.verbose == True:
+                print("Expanding hypersphere...")
+
             iteration = 0
-            step_ = 0.1  # (self.dicrease_radius - 1) * radius_/10.0 #a chabger
-            # initialisation
-            center_ = self.obs_to_interprete
-            # layer = first_layer_
-            layer, y_layer_ = self.layer_with_preds(
-                self.obs_to_interprete, radius_ * 5, self.caps, self.n_in_layer
-            )
-            self.centers = []
-            radius_ = radius_  # bluff
+            step_ = radius_ / self.dicrease_radius
+            # step_ = (self.dicrease_radius - 1) * radius_/5.0  #To do: work on a heuristic for these parameters
+
             while n_ennemies_ <= 0:
-                gradient = self.get_exploration_direction(
-                    layer, y_layer_
-                )  # la on fait comme s'il n'y avait qu'un gradient mais il pourrait y en avoir plusieurs
-                center_ = center_ + gradient * step_  # idem
-                layer, y_layer_ = self.layer_with_preds(
-                    center_, radius_ * 5, self.caps, self.n_in_layer
+
+                layer = self.ennemies_in_layer_(
+                    layer_shape=self.layer_shape,
+                    radius=radius_,
+                    step=step_,
+                    caps=self.caps,
+                    n=self.n_in_layer,
+                    first_layer=False,
                 )
-                self.centers.append(center_)
-                n_ennemies_ = layer[np.where(y_layer_ > 0.5)].shape[
-                    0
-                ]  # proba d'appartenir à la nouvelle classe
+
+                n_ennemies_ = layer.shape[0]
+                radius_ = radius_ + step_
+
+                if self.verbose == True and (iteration % 1000 == 0):
+                    print(f"Iteration {iteration}")
+
                 iteration += 1
 
-            print("Final number of iterations: ", iteration)
-        print("Final radius: ", (radius_ - step_, radius_))
-        print("Final number of ennemies: ", n_ennemies_)
-        self.centers = np.array(self.centers)
-        return layer[
-            np.where(y_layer_ > 0.5)
-        ]  # proba d'appartenir à la nouvelle classe
+            if self.verbose == True:
+                print("Final number of iterations: ", iteration)
 
-    def layer_with_preds(self, center, radius, caps=None, n=1000):
-        """
-        prend obs, genere couche dans sphere, et renvoie les probas d'appartenir à target class
-        """
-        layer = generate_inside_ball(center, (0, radius), n)
-        # cap here: pas optimal, ici meme min et meme max pour toutes variables;
+        if self.verbose == True:
+            print("Final radius: ", (radius_ - step_, radius_))
+            print("Final number of ennemies: ", n_ennemies_)
+        return layer
 
+    def ennemies_in_layer_(
+        self,
+        layer_shape="ring",
+        radius=None,
+        step=None,
+        caps=None,
+        n=1000,
+        first_layer=False,
+    ):
+        """
+        Basis for GS: generates a hypersphere layer, labels it with the blackbox and returns the instances that are predicted to belong to the target class.
+        """
+        # todo: split generate and get_enemies
+
+        if first_layer:
+            layer = generate_ball(self.obs_to_interprete, radius, n)
+
+        else:
+
+            if self.layer_shape == "ring":
+                segment = (radius, radius + step)
+                layer = generate_ring(self.obs_to_interprete, segment, n)
+
+            elif self.layer_shape == "sphere":
+                layer = generate_sphere(self.obs_to_interprete, radius + step, n)
+
+            elif self.layer_shape == "ball":
+                layer = generate_ball(self.obs_to_interprete, radius + step, n)
+
+        # print(f"layer: {layer}")
+
+        # cap here: not optimal - To do
+        # print(caps)
         if caps != None:
             cap_fn_ = lambda x: min(max(x, caps[0]), caps[1])
             layer = np.vectorize(cap_fn_)(layer)
+            # print(f"vectorized layer: {layer}")
 
-        preds = self.prediction_fn(layer)[:, self.target_class]
-        return layer, preds
+        preds_ = self.prediction_fn(layer)
 
-    def get_exploration_direction(self, layer, preds):
-        from sklearn.linear_model import LinearRegression
+        if self.target_class == None:
+            enemies_layer = layer[np.where(preds_ != self.y_obs)]
+        else:
+            enemies_layer = layer[np.where(preds_ == self.target_class)]
 
-        lr = LinearRegression(fit_intercept=True).fit(layer, preds)
-        gradient = lr.coef_
-        gradient = gradient / sum([x**2 for x in gradient]) ** (0.5)
-        return gradient
+        # sys.exit(":)")
 
-    def get_exploration_direction2(self, layer, preds):
-        return layer[np.where(preds == preds.max())][0] - self.obs_to_interprete
+        return enemies_layer
 
-    def feature_selection(self, counterfactual):  # checker
-        """ """
-        print("Feature selection...")
-        move_sorted = sorted(
-            enumerate(abs(counterfactual - self.obs_to_interprete)), key=lambda x: x[1]
+    def sparsify(self, counterfactual, feature_index):
+        sparser_candidate = counterfactual.copy()
+        sparser_candidate[feature_index] = self.obs_to_interprete.flatten()[
+            feature_index
+        ]
+
+        if self.target_class == None:
+            valid = self.prediction_fn(sparser_candidate.reshape(1, -1)) != self.y_obs
+
+        else:
+            valid = (
+                self.prediction_fn(sparser_candidate.reshape(1, -1))
+                == self.target_class
+            )
+        return (valid, sparser_candidate)
+
+    def feature_selection(self, counterfactual):
+        """
+        Projection step of the GS algorithm. Make projections to make (e* - obs_to_interprete) sparse.
+        Heuristic: sort the coordinates of np.abs(e* - obs_to_interprete) in ascending order and project
+        as long as it does not change the predicted class
+
+        Inputs:
+        counterfactual: e*
+        """
+        if self.verbose == True:
+            print("Feature selection...")
+
+        diffs_sorted = sorted(
+            enumerate(abs(counterfactual - self.obs_to_interprete.flatten())),
+            key=lambda x: x[1],
         )
-        move_sorted = [x[0] for x in move_sorted if x[1] > 0.0]
-        out = counterfactual.copy()
-        reduced = 0
 
-        for k in move_sorted:
-            new_enn = out.copy()
-            new_enn[k] = self.obs_to_interprete[k]
+        indices_sorted = [x[0] for x in diffs_sorted if x[1] > 0.0]
 
-            if (
-                self.prediction_fn(new_enn.reshape(1, -1))[0][self.target_class] > 0.5
-            ):  # il faut mettre argmax pour multiclasse
-                out[k] = new_enn[k]
-                reduced += 1
+        result_counterfactuals = []
+        indices_to_sparsify = indices_sorted.copy()
 
-        print("Reduced %d coordinates" % reduced)
+        while len(result_counterfactuals) < self.n_results:
+            to_sparsify = counterfactual.copy()
+            indices_reverted = []
+            for k in indices_to_sparsify:
+                valid, sparsified_counterfactual = self.sparsify(to_sparsify, k)
+                if valid:
+                    to_sparsify = sparsified_counterfactual.copy()
+                    indices_reverted.append(k)
+
+            remaining_indices = [
+                ind for ind in indices_sorted if ind not in indices_reverted
+            ]
+            remaining_indices.reverse()
+            indices_to_sparsify = remaining_indices + indices_reverted
+            result_counterfactuals.append(to_sparsify)
+
+        return result_counterfactuals
+
+    def feature_selection_all(self, counterfactual):
+        """
+        Try all possible combinations of projections to make the explanation as sparse as possible.
+        Warning: really long!
+        """
+        if self.verbose == True:
+            print("Grid search for projections...")
+        for k in range(self.obs_to_interprete.size):
+            print("==========", k, "==========")
+            for combo in combinations(range(self.obs_to_interprete.size), k):
+                out = counterfactual.copy()
+                new_enn = out.copy()
+                for v in combo:
+                    new_enn[v] = self.obs_to_interprete[v]
+                if self.prediction_fn(new_enn.reshape(1, -1)) == self.target_class:
+                    print("bim")
+                    out = new_enn.copy()
+                    reduced = k
+        if self.verbose == True:
+            print("Reduced %d coordinates" % reduced)
         return out
