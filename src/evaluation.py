@@ -1,9 +1,11 @@
 import pandas as pd
 import numpy as np
 import time
+import random
 from typing import Callable
 
 from .classifier import Classifier
+from .constants import *
 from .counterfactual_generator import CounterfactualGenerator
 from .imputer import Imputer
 from .data_utils import (
@@ -14,7 +16,7 @@ from .data_utils import (
 )
 
 
-class Evaluator:
+class CounterfactualEvaluator:
 
     def __init__(self, X_train: np.array):
         # Calculate mean absolute deviation (MAD) for each predictor in train data
@@ -148,6 +150,7 @@ class Evaluator:
     def evaluate_explanation(
         self,
         original_vector: np.array,
+        imputed_vector: np.array,
         explanation: np.array,
         prediction_func: Callable,
         target_class: int,
@@ -155,7 +158,8 @@ class Evaluator:
     ) -> tuple:
         """Return evaluation metrics for a set of alternative vectors.
 
-        :param np.array original_vector: original input vector
+        :param np.array original_vector: original input vector with complete values
+        :param np.array imputed_vector: input vector with imputed missing value(s)
         :param np.array explanation: set of alternative vectors
         :param Callable prediction_func: classifier prediction function
         :param int target_class: class that counterfactual should predict
@@ -165,7 +169,6 @@ class Evaluator:
         n_vectors = len(explanation)
         valid_ratio = self.get_valid_ratio(explanation, prediction_func, target_class)
 
-        # TODO: avg distance should be from original with real, not imputed, value
         avg_dist_from_original = self.get_average_distance_from_original(
             original_vector, explanation
         )
@@ -181,89 +184,168 @@ class Evaluator:
         }
 
 
-def perform_loocv_evaluation(data: pd.DataFrame, config: dict):
-    """Evaluate counterfactual generation process for given configurations.
+class LoocvEvaluator:
 
-    :param pd.DataFrame data: dataset to use
-    :param dict config: config parameters
-    """
-    # TODO: handle config params and setup accordingly
+    def __init__(self, data: pd.DataFrame, config: dict):
+        self.config = config
+        self.debug = config[config_debug]
+        self.target_index = get_target_index(data, config.get(config_target_name))
+        self.cat_indices = get_cat_indices(data, self.target_index)
+        self.num_indices = get_num_indices(data, self.target_index)
+        self.predictor_indices = np.sort(
+            np.concatenate([self.cat_indices, self.num_indices])
+        ).astype(int)
 
-    debug = config["debug"]
+        if self.debug:
+            print(data.head())
 
-    if debug:
-        print(data.head())
+        self.data = data.to_numpy()
 
-    target_index = get_target_index(data, config.get("target_name"))
-    cat_indices = get_cat_indices(data, target_index)
-    num_indices = get_num_indices(data, target_index)
-    predictor_indices = np.sort(np.concatenate([cat_indices, num_indices])).astype(int)
+        self.metric_names = [
+            "n_vectors",
+            "valid_ratio",
+            "avg_dist_from_original",
+            "diversity",
+            "avg_sparsity",
+            "runtime_seconds",
+        ]
+        self.metrics = {metric: [] for metric in self.metric_names}
 
-    if debug:
-        print(f"cat_indices: {type(cat_indices)} {cat_indices}")
-        print(f"num_indices: {type(num_indices)} {num_indices}")
-        print(f"predictor_indices: {type(predictor_indices)} {predictor_indices}")
-        print(f"target_index: {type(target_index)} {target_index}")
+        if self.debug:
+            print(f"\ncat_indices: {type(self.cat_indices)} {self.cat_indices}")
+            print(f"num_indices: {type(self.num_indices)} {self.num_indices}")
+            print(
+                f"predictor_indices: {type(self.predictor_indices)} {self.predictor_indices}"
+            )
+            print(f"target_index: {type(self.target_index)} {self.target_index}\n")
 
-    classifier = Classifier(num_indices)
-    data = data.to_numpy()
+    def _introduce_missing_values(self, test_instance: np.array) -> np.array:
+        """Change values in test instance to nan according to specified
+        missing data mechanism.
 
-    metric_names = [
-        "n_vectors",
-        "valid_ratio",
-        "avg_dist_from_original",
-        "diversity",
-        "avg_sparsity",
-        "runtime_seconds",
-    ]
-    metrics = {metric: [] for metric in metric_names}
+        :param np.array test_instance: test instance
+        :return np.array: test instance with missing value(s)
+        """
+        mechanism = self.config[config_missing_data_mechanism]
+        if mechanism == config_MCAR:
+            index = random.randint(0, len(test_instance) - 1)
+            test_instance[index] = np.nan
+        elif mechanism == config_MAR:
+            pass
+        elif mechanism == config_MNAR:
+            pass
+        else:
+            raise RuntimeError(
+                f"Invalid missing data mechanism '{mechanism}'; excpected one of MCAR, MAR, MNAR"
+            )
+        return test_instance
 
-    for row_ind in range(len(data)):
-        test_instance = data[row_ind, :].ravel()
-        test_instance = np.array([np.delete(test_instance, target_index)])
+    def _get_and_impute_test_instance(
+        self, row_ind: int
+    ) -> tuple[np.array, np.array, np.array]:
+        """Create test instance from data. Introduce missing values according
+        to mechanism defined in config.
 
-        # TODO: introduce missing values to test_instance
-        # with missing data mechanism from config
+        :param int row_ind: row index in data to test
+        :return tuple[np.array, np.array, np.array]: (original complete test instance,
+        test instance with missing values, indices of missing values)
+        """
+        test_instance = self.data[row_ind, :].ravel()
+        test_instance = np.delete(test_instance, self.target_index)
 
-        # indices_with_missing_values = get_indices_with_missing_values(test_instance)
+        # Save test instance without missing values for evaluation
+        test_instance_complete = test_instance.copy()
+
+        # Artificially create missing value(s) in test instance
+        test_instance_with_missing_values = self._introduce_missing_values(
+            test_instance
+        )
+
+        if self.debug:
+            print(f"test_instance after introducing missing values {test_instance}")
+
+        indices_with_missing_values = get_indices_with_missing_values(test_instance)
+
+        return (
+            test_instance_complete,
+            test_instance_with_missing_values,
+            indices_with_missing_values,
+        )
+
+    def _train_and_generate(self, row_ind: int, classifier: Classifier):
+        """Train model without selected test row and create counterfactuals
+        for test row. Store metrics in dict.
+
+        :param int row_ind: row index in data to test
+        :param Classifier classifier: classifier
+        """
+
+        # Get test instance and copy with missing values introduced
+        (
+            test_instance_complete,
+            test_instance_with_missing_values,
+            indices_with_missing_values,
+        ) = self._get_and_impute_test_instance(row_ind)
 
         # Create train and test datasets
-        data_without_test_instance = np.delete(data, row_ind, 0)
-        X_train = data_without_test_instance[:, predictor_indices]
-        y_train = data_without_test_instance[:, target_index].ravel()
+        data_without_test_instance = np.delete(self.data, row_ind, 0)
+        X_train = data_without_test_instance[:, self.predictor_indices]
+        y_train = data_without_test_instance[:, self.target_index].ravel()
         classifier.train(X_train, y_train)
         cf_generator = CounterfactualGenerator(classifier, None, None)
 
-        # TODO: impute test_instance with missing data
-        # imputer = Imputer()
-        # test_instance = imputer.mean_imputation(data_without_test_instance, test_instance, indices_with_missing_values, 1)
+        # Impute missing value(s) in test instance
+        imputer = Imputer()
+        test_instance_imputed = imputer.mean_imputation(
+            data_without_test_instance,
+            test_instance_with_missing_values,
+            indices_with_missing_values,
+        )
 
-        prediction = classifier.predict(test_instance)
+        prediction = classifier.predict(test_instance_imputed)
         if prediction == 1:
             time_1 = time.time()
             counterfactuals = cf_generator.generate_explanations(
-                test_instance, None, 3, "GS", debug
+                test_instance_imputed, None, 3, "GS", self.debug
             )
             time_2 = time.time()
             wall_time = time_2 - time_1
 
-            if counterfactuals.ndim == 1:
-                counterfactuals = np.array([counterfactuals])
-
-            evaluator = Evaluator(X_train)
+            evaluator = CounterfactualEvaluator(X_train)
             test_instance_metrics = evaluator.evaluate_explanation(
-                test_instance[0], counterfactuals, classifier.predict, 0, wall_time
+                test_instance_complete,
+                test_instance_imputed,
+                counterfactuals,
+                classifier.predict,
+                0,
+                wall_time,
             )
-            for metric_name in metric_names:
-                metrics.get(metric_name).append(test_instance_metrics.get(metric_name))
+            for metric_name in self.metric_names:
+                self.metrics.get(metric_name).append(
+                    test_instance_metrics.get(metric_name)
+                )
 
-    averages = [np.mean(np.array(metric_arr)) for metric_arr in metrics.values()]
-    final_metric_names = [
-        "avg_" + metric_name if not metric_name.startswith("avg_") else metric_name
-        for metric_name in metric_names
-    ]
-    avg_metrics = {
-        metric_name: avg_metric
-        for metric_name, avg_metric in zip(final_metric_names, averages)
-    }
-    return avg_metrics
+    def perform_loocv_evaluation(self):
+        """Evaluate counterfactual generation process for configurations given on init.
+
+        :return dict avg_metrics: average metrics
+        """
+
+        if self.config[config_classifier] == config_logistic_regression:
+            classifier = Classifier(self.num_indices)
+
+        for row_ind in range(len(self.data)):
+            self._train_and_generate(row_ind, classifier)
+
+        averages = [
+            np.mean(np.array(metric_arr)) for metric_arr in self.metrics.values()
+        ]
+        final_metric_names = [
+            "avg_" + metric_name if not metric_name.startswith("avg_") else metric_name
+            for metric_name in self.metric_names
+        ]
+        avg_metrics = {
+            metric_name: avg_metric
+            for metric_name, avg_metric in zip(final_metric_names, averages)
+        }
+        return avg_metrics

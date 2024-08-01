@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-from src.evaluation import Evaluator
+from src.evaluation import CounterfactualEvaluator as Evaluator
 
 def test_when_mad_is_integer_then_correct_value_calculated():
     evaluator = Evaluator(np.array([]))

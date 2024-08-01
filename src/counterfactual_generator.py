@@ -58,7 +58,7 @@ class CounterfactualGenerator:
         :return np.array: array with n rows
         """
         if method == "GS":
-            explanation = self.get_growing_spheres_counterfactuals(input[0], n, debug)
+            explanation = self.get_growing_spheres_counterfactuals(input, n, debug)
         else:
             raise NotImplementedError("Only method GS (GrowingSpheres) is implemented!")
         return explanation

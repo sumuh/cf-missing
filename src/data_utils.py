@@ -3,6 +3,7 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import math
+from .constants import *
 
 
 def get_wine_dataset_config() -> dict:
@@ -11,13 +12,13 @@ def get_wine_dataset_config() -> dict:
     :return dict: config dictionary
     """
     return {
-        "dataset_name": "WineQuality red",
-        "file_path": "winequality/winequality-red.csv",
-        "target_name": "quality",
-        "multiclass_target": True,
-        "missing_values": False,
-        "multiclass_threshold": 5,
-        "separator": ";",
+        config_dataset_name: "WineQuality red",
+        config_file_path: "winequality/winequality-red.csv",
+        config_target_name: "quality",
+        config_multiclass_target: True,
+        config_missing_values: False,
+        config_multiclass_threshold: 5,
+        config_separator: ";",
     }
 
 
@@ -27,12 +28,12 @@ def get_diabetes_dataset_config() -> dict:
     :return dict: config dictionary
     """
     return {
-        "dataset_name": "Pima Indians Diabetes",
-        "file_path": "diabetes.csv",
-        "target_name": "Outcome",
-        "multiclass_target": False,
-        "missing_values": True,
-        "separator": ",",
+        config_dataset_name: "Pima Indians Diabetes",
+        config_file_path: "diabetes.csv",
+        config_target_name: "Outcome",
+        config_multiclass_target: False,
+        config_missing_values: True,
+        config_separator: ",",
     }
 
 

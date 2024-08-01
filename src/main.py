@@ -5,7 +5,7 @@ from datetime import datetime
 from .classifier import Classifier
 from .counterfactual_generator import CounterfactualGenerator
 from .imputer import Imputer
-from .evaluation import Evaluator, perform_loocv_evaluation
+from .evaluation import CounterfactualEvaluator, LoocvEvaluator
 from .data_utils import (
     load_data,
     explore_data,
@@ -19,6 +19,7 @@ from .data_utils import (
     get_wine_dataset_config,
     transform_target_to_binary_class,
 )
+from .constants import *
 
 
 def test_single_instance():
@@ -74,10 +75,10 @@ def test_single_instance():
 
 
 def main():
-    save_to_file = True
-    DEBUG = True
+    SAVE_TO_FILE = True
+    DEBUG = False
 
-    if save_to_file:
+    if SAVE_TO_FILE:
         results_dir = (
             f"{os.path.dirname(os.path.realpath(__file__))}/../evaluation_results"
         )
@@ -86,29 +87,31 @@ def main():
         results_filename = f"{results_dir}/results-{formatted_time}.txt"
 
     data_config = get_wine_dataset_config()
-    data = load_data(data_config["file_path"], data_config["separator"])
+    data = load_data(data_config[config_file_path], data_config[config_separator])
 
-    if data_config["multiclass_target"]:
+    if data_config[config_multiclass_target]:
         data = transform_target_to_binary_class(
-            data, data_config["target_name"], data_config["multiclass_threshold"]
+            data,
+            data_config[config_target_name],
+            data_config[config_multiclass_threshold],
         )
 
-    # TODO: configs for different runs
     evaluation_config = {
-        "classifiers": ["LogisticRegression"],
-        "missing_data_mechanisms": ["MCAR", "MAR", "MNAR"],
-        "dataset_name": data_config["dataset_name"],
-        "target_name": data_config["target_name"],
-        "multiclass_target": data_config["multiclass_target"],
-        "debug": DEBUG,
+        config_classifier: config_logistic_regression,
+        config_missing_data_mechanism: config_MCAR,
+        config_dataset_name: data_config[config_dataset_name],
+        config_target_name: data_config[config_target_name],
+        config_multiclass_target: data_config[config_multiclass_target],
+        config_debug: DEBUG,
     }
 
-    # TODO: make combinations of different evaluation configs
-    results = perform_loocv_evaluation(data, evaluation_config)
+    loocv_evaluator = LoocvEvaluator(data, evaluation_config)
+    results = loocv_evaluator.perform_loocv_evaluation()
+
     print(f"config: {evaluation_config}")
     print(f"results: {results}")
 
-    if save_to_file:
+    if SAVE_TO_FILE:
         # Pretty print config and results to file
         with open(results_filename, "w") as results_file:
             config_str = "config\n" + "\n".join(

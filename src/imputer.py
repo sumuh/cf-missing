@@ -28,25 +28,19 @@ class Imputer:
         train_data: np.array,
         input: np.array,
         indices_with_missing_values: np.array,
-        n: int,
     ) -> np.array:
         """Returns input with missing value imputed with dataset mean.
 
         :param np.array train_data: dataset
         :param np.array input: 1D input array
         :param np.array indices_with_missing_values: indices of input where value is missing
-        :param int n: number of imputed inputs to create
-        :return np.array: array with n rows, each an imputed version of input
+        :return np.array: imputed version of input
         """
         self.check_number_of_missing_values(indices_with_missing_values)
         index_of_missing_feature = indices_with_missing_values[0]
         feature_mean = np.mean(train_data[:, index_of_missing_feature])
         input[index_of_missing_feature] = feature_mean
-        if n == 1:
-            imputed_inputs = np.array([input])
-        else:
-            imputed_inputs = np.repeat([input], n, axis=0)
-        return imputed_inputs
+        return input
 
     def subgroup_mean_imputation(
         self,
