@@ -18,7 +18,7 @@ class CounterfactualGenerator:
     def get_growing_spheres_counterfactuals(self, input: np.array, n: int) -> np.array:
         """Returns n counterfactuals generated with the DiverseGrowingSpheres algorithm.
 
-        :param np.array input: input array 
+        :param np.array input: input array
         :param int n: number of explanations to generate
         :return np.array: array with n rows
         """
@@ -33,6 +33,7 @@ class CounterfactualGenerator:
             layer_shape="sphere",
             n_results=n,
             # verbose=True,
+            # debug=True
         )
         return gs_model.find_counterfactual()
 

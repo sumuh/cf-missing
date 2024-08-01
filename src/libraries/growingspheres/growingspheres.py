@@ -294,6 +294,7 @@ class DiverseGrowingSpheres:
         sparse=True,
         n_results=3,
         verbose=False,
+        debug=False,
     ):
         """ """
         self.obs_to_interprete = obs_to_interprete
@@ -322,6 +323,7 @@ class DiverseGrowingSpheres:
             )
 
         self.verbose = verbose
+        self.debug = debug
 
         if int(self.y_obs) != self.y_obs:
             raise ValueError("Prediction function should return a class (integer)")
@@ -340,6 +342,7 @@ class DiverseGrowingSpheres:
         self.e_star = closest_ennemy_
         if self.sparse == True:
             out = np.array(self.feature_selection(closest_ennemy_))
+            # out = np.array(self.feature_selection_all(closest_ennemy_))
         else:
             out = closest_ennemy_
         return out
@@ -488,23 +491,35 @@ class DiverseGrowingSpheres:
 
         result_counterfactuals = []
         indices_to_sparsify = indices_sorted.copy()
+        rolls = 0
 
-        while len(result_counterfactuals) < self.n_results:
+        while len(result_counterfactuals) < self.n_results and rolls < len(
+            indices_to_sparsify
+        ):
             to_sparsify = counterfactual.copy()
-            indices_reverted = []
+            if self.debug:
+                print("indices_to_sparsify")
+                print(indices_to_sparsify)
+
             for k in indices_to_sparsify:
                 valid, sparsified_counterfactual = self.sparsify(to_sparsify, k)
                 if valid:
                     to_sparsify = sparsified_counterfactual.copy()
-                    indices_reverted.append(k)
 
-            remaining_indices = [
-                ind for ind in indices_sorted if ind not in indices_reverted
-            ]
-            remaining_indices.reverse()
-            indices_to_sparsify = remaining_indices + indices_reverted
-            result_counterfactuals.append(to_sparsify)
+            indices_to_sparsify = np.roll(indices_to_sparsify, -1)
+            rolls += 1
+            already_added = False
+            for arr in result_counterfactuals:
+                if np.array_equal(arr, to_sparsify):
+                    already_added = True
+            if not already_added:
+                result_counterfactuals.append(to_sparsify)
 
+        if self.debug:
+            print("------------")
+            for cf in result_counterfactuals:
+                print(cf, "\n")
+            print("------------")
         return result_counterfactuals
 
     def feature_selection_all(self, counterfactual):
@@ -514,17 +529,17 @@ class DiverseGrowingSpheres:
         """
         if self.verbose == True:
             print("Grid search for projections...")
-        for k in range(self.obs_to_interprete.size):
-            print("==========", k, "==========")
-            for combo in combinations(range(self.obs_to_interprete.size), k):
+        obs_to_interprete_size = self.obs_to_interprete.flatten().size
+        for k in range(obs_to_interprete_size):
+            for combo in combinations(range(obs_to_interprete_size), k):
                 out = counterfactual.copy()
                 new_enn = out.copy()
                 for v in combo:
-                    new_enn[v] = self.obs_to_interprete[v]
+                    new_enn[v] = self.obs_to_interprete.flatten()[v]
                 if self.prediction_fn(new_enn.reshape(1, -1)) == self.target_class:
-                    print("bim")
                     out = new_enn.copy()
                     reduced = k
         if self.verbose == True:
             print("Reduced %d coordinates" % reduced)
+
         return out
