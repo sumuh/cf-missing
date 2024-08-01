@@ -15,11 +15,14 @@ class CounterfactualGenerator:
         self.train_data = train_data
         self.target_feature_index = target_feature_index
 
-    def get_growing_spheres_counterfactuals(self, input: np.array, n: int) -> np.array:
+    def get_growing_spheres_counterfactuals(
+        self, input: np.array, n: int, debug: bool
+    ) -> np.array:
         """Returns n counterfactuals generated with the DiverseGrowingSpheres algorithm.
 
         :param np.array input: input array
         :param int n: number of explanations to generate
+        :param bool debug: enable debug/verbose mode
         :return np.array: array with n rows
         """
         gs_model = gs.DiverseGrowingSpheres(
@@ -32,8 +35,8 @@ class CounterfactualGenerator:
             dicrease_radius=5.0,
             layer_shape="sphere",
             n_results=n,
-            # verbose=True,
-            # debug=True
+            verbose=debug,
+            debug=debug,
         )
         return gs_model.find_counterfactual()
 
@@ -43,6 +46,7 @@ class CounterfactualGenerator:
         indices_with_missing_values: np.array,
         n: int,
         method: str = "GS",
+        debug: bool = False,
     ) -> np.array:
         """Generate explanation for input vector(s).
 
@@ -50,10 +54,11 @@ class CounterfactualGenerator:
         :param np.array indices_with_missing_values: indices of columns missing values
         :param int n: number of explanations to generate
         :param str method: counterfactual generation method
+        :param bool debug: enable debug/verbose mode
         :return np.array: array with n rows
         """
         if method == "GS":
-            explanation = self.get_growing_spheres_counterfactuals(input[0], n)
+            explanation = self.get_growing_spheres_counterfactuals(input[0], n, debug)
         else:
             raise NotImplementedError("Only method GS (GrowingSpheres) is implemented!")
         return explanation

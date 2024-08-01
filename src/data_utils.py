@@ -2,16 +2,64 @@ import pandas as pd
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import math
 
 
-def load_data() -> pd.DataFrame:
-    """Loads the PIMA Indians diabetes dataset from data/
+def get_wine_dataset_config() -> dict:
+    """Return details of wine dataset.
 
+    :return dict: config dictionary
+    """
+    return {
+        "dataset_name": "WineQuality red",
+        "file_path": "winequality/winequality-red.csv",
+        "target_name": "quality",
+        "multiclass_target": True,
+        "missing_values": False,
+        "multiclass_threshold": 5,
+        "separator": ";",
+    }
+
+
+def get_diabetes_dataset_config() -> dict:
+    """Return details of diabetes dataset.
+
+    :return dict: config dictionary
+    """
+    return {
+        "dataset_name": "Pima Indians Diabetes",
+        "file_path": "diabetes.csv",
+        "target_name": "Outcome",
+        "multiclass_target": False,
+        "missing_values": True,
+        "separator": ",",
+    }
+
+
+def load_data(relative_path: str, separator: str) -> pd.DataFrame:
+    """Loads the given dataset.
+
+    :param str path: path to dataset .csv; relative to data dir
+    :param str separator: csv separator
     :return pd.DataFrame: raw dataset
     """
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    data_path = f"{dir_path}/../data/diabetes.csv"
-    data = pd.read_csv(data_path)
+    data_path = f"{dir_path}/../data/{relative_path}"
+    data = pd.read_csv(data_path, sep=separator)
+    return data
+
+
+def transform_target_to_binary_class(
+    data: pd.DataFrame, target_name: str, threshold: int
+) -> pd.DataFrame:
+    """Transforms multiclass target column to binary class.
+
+    :param pd.DataFrame data: data
+    :param str target_name: target column name
+    :param int threshold: cutoff point
+    :return pd.DataFrame: data with target column replaced
+    """
+    data[target_name] = np.where(data[target_name] <= threshold, 0, 1)
     return data
 
 

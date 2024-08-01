@@ -482,6 +482,11 @@ class DiverseGrowingSpheres:
         if self.verbose == True:
             print("Feature selection...")
 
+        if self.debug:
+            print(
+                f"input\n{self.obs_to_interprete}\n\noriginal counterfactual\n\n{counterfactual}\n"
+            )
+
         diffs_sorted = sorted(
             enumerate(abs(counterfactual - self.obs_to_interprete.flatten())),
             key=lambda x: x[1],
@@ -497,9 +502,6 @@ class DiverseGrowingSpheres:
             indices_to_sparsify
         ):
             to_sparsify = counterfactual.copy()
-            if self.debug:
-                print("indices_to_sparsify")
-                print(indices_to_sparsify)
 
             for k in indices_to_sparsify:
                 valid, sparsified_counterfactual = self.sparsify(to_sparsify, k)
@@ -516,9 +518,9 @@ class DiverseGrowingSpheres:
                 result_counterfactuals.append(to_sparsify)
 
         if self.debug:
-            print("------------")
+            print(f"final counterfactuals\n------------")
             for cf in result_counterfactuals:
-                print(cf, "\n")
+                print(f"{cf}\n")
             print("------------")
         return result_counterfactuals
 

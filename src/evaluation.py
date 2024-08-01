@@ -189,17 +189,21 @@ def perform_loocv_evaluation(data: pd.DataFrame, config: dict):
     """
     # TODO: handle config params and setup accordingly
 
-    print(data.head())
+    debug = config["debug"]
+
+    if debug:
+        print(data.head())
 
     target_index = get_target_index(data, config.get("target_name"))
     cat_indices = get_cat_indices(data, target_index)
     num_indices = get_num_indices(data, target_index)
     predictor_indices = np.sort(np.concatenate([cat_indices, num_indices])).astype(int)
 
-    # print(f"cat_indices: {type(cat_indices)} {cat_indices}")
-    # print(f"num_indices: {type(num_indices)} {num_indices}")
-    # print(f"predictor_indices: {type(predictor_indices)} {predictor_indices}")
-    # print(f"target_index: {type(target_index)} {target_index}")
+    if debug:
+        print(f"cat_indices: {type(cat_indices)} {cat_indices}")
+        print(f"num_indices: {type(num_indices)} {num_indices}")
+        print(f"predictor_indices: {type(predictor_indices)} {predictor_indices}")
+        print(f"target_index: {type(target_index)} {target_index}")
 
     classifier = Classifier(num_indices)
     data = data.to_numpy()
@@ -237,7 +241,9 @@ def perform_loocv_evaluation(data: pd.DataFrame, config: dict):
         prediction = classifier.predict(test_instance)
         if prediction == 1:
             time_1 = time.time()
-            counterfactuals = cf_generator.generate_explanations(test_instance, None, 3)
+            counterfactuals = cf_generator.generate_explanations(
+                test_instance, None, 3, "GS", debug
+            )
             time_2 = time.time()
             wall_time = time_2 - time_1
 

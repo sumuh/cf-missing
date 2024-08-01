@@ -15,6 +15,9 @@ from .data_utils import (
     get_target_index,
     get_test_input_1,
     get_test_input_2,
+    get_diabetes_dataset_config,
+    get_wine_dataset_config,
+    transform_target_to_binary_class,
 )
 
 
@@ -72,6 +75,7 @@ def test_single_instance():
 
 def main():
     save_to_file = True
+    DEBUG = True
 
     if save_to_file:
         results_dir = (
@@ -81,14 +85,24 @@ def main():
         formatted_time = current_time.strftime("%d-%m-%Y-%H-%M-%S")
         results_filename = f"{results_dir}/results-{formatted_time}.txt"
 
-    data = load_data()
+    data_config = get_wine_dataset_config()
+    data = load_data(data_config["file_path"], data_config["separator"])
+
+    if data_config["multiclass_target"]:
+        data = transform_target_to_binary_class(
+            data, data_config["target_name"], data_config["multiclass_threshold"]
+        )
+
     # TODO: configs for different runs
     evaluation_config = {
         "classifiers": ["LogisticRegression"],
         "missing_data_mechanisms": ["MCAR", "MAR", "MNAR"],
-        "dataset_name": "Pima Indians Diabetes",
-        "target_name": "Outcome",
+        "dataset_name": data_config["dataset_name"],
+        "target_name": data_config["target_name"],
+        "multiclass_target": data_config["multiclass_target"],
+        "debug": DEBUG,
     }
+
     # TODO: make combinations of different evaluation configs
     results = perform_loocv_evaluation(data, evaluation_config)
     print(f"config: {evaluation_config}")
