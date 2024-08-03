@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import time
-import random
 from typing import Callable
 
 from .classifier import Classifier
@@ -150,21 +149,17 @@ class CounterfactualEvaluator:
     def evaluate_explanation(
         self,
         original_vector: np.array,
-        imputed_vector: np.array,
         explanation: np.array,
         prediction_func: Callable,
         target_class: int,
-        wall_time: float,
-    ) -> tuple:
+    ) -> dict[str, np.array]:
         """Return evaluation metrics for a set of alternative vectors.
 
         :param np.array original_vector: original input vector with complete values
-        :param np.array imputed_vector: input vector with imputed missing value(s)
         :param np.array explanation: set of alternative vectors
         :param Callable prediction_func: classifier prediction function
         :param int target_class: class that counterfactual should predict
-        :param float wall_time: wall clock runtime for generating cf
-        :return tuple: set of metrics
+        :return dict[str, np.array]: dict of metrics
         """
         n_vectors = len(explanation)
         valid_ratio = self.get_valid_ratio(explanation, prediction_func, target_class)
@@ -180,7 +175,6 @@ class CounterfactualEvaluator:
             "avg_dist_from_original": avg_dist_from_original,
             "diversity": diversity,
             "avg_sparsity": avg_sparsity,
-            "runtime_seconds": wall_time,
         }
 
 
@@ -196,6 +190,9 @@ class LoocvEvaluator:
             np.concatenate([self.cat_indices, self.num_indices])
         ).astype(int)
 
+        if self.config[config_classifier] == config_logistic_regression:
+            self.classifier = Classifier(self.num_indices)
+
         if self.debug:
             print(data.head())
 
@@ -208,8 +205,8 @@ class LoocvEvaluator:
             "diversity",
             "avg_sparsity",
             "runtime_seconds",
+            "num_missing_values",
         ]
-        self.metrics = {metric: [] for metric in self.metric_names}
 
         if self.debug:
             print(f"\ncat_indices: {type(self.cat_indices)} {self.cat_indices}")
@@ -226,126 +223,138 @@ class LoocvEvaluator:
         :param np.array test_instance: test instance
         :return np.array: test instance with missing value(s)
         """
+        test_instance_with_missing_values = test_instance.copy()
         mechanism = self.config[config_missing_data_mechanism]
         if mechanism == config_MCAR:
-            index = random.randint(0, len(test_instance) - 1)
-            test_instance[index] = np.nan
+            test_instance_with_missing_values[3] = np.nan
         elif mechanism == config_MAR:
-            pass
+            # if sulphates is small, volatile acidity is missing
+            if test_instance[9] < 0.9:
+                test_instance_with_missing_values[1] = np.nan
         elif mechanism == config_MNAR:
-            pass
+            # if pH is large, pH is missing
+            if test_instance[8] > 3.4:
+                test_instance_with_missing_values[8] = np.nan
         else:
             raise RuntimeError(
                 f"Invalid missing data mechanism '{mechanism}'; excpected one of MCAR, MAR, MNAR"
             )
-        return test_instance
+        return test_instance_with_missing_values
 
-    def _get_and_impute_test_instance(
-        self, row_ind: int
-    ) -> tuple[np.array, np.array, np.array]:
-        """Create test instance from data. Introduce missing values according
-        to mechanism defined in config.
+    def _get_test_instance(self, row_ind: int) -> np.array:
+        """Create test instance from data.
 
         :param int row_ind: row index in data to test
-        :return tuple[np.array, np.array, np.array]: (original complete test instance,
-        test instance with missing values, indices of missing values)
+        :return np.array: test instance with target feature removed
         """
         test_instance = self.data[row_ind, :].ravel()
         test_instance = np.delete(test_instance, self.target_index)
+        return test_instance
 
-        # Save test instance without missing values for evaluation
-        test_instance_complete = test_instance.copy()
+    def _get_X_train_y_train(
+        self, data_without_test_instance: np.array
+    ) -> tuple[np.array, np.array]:
+        """Get X train and y train.
 
-        # Artificially create missing value(s) in test instance
-        test_instance_with_missing_values = self._introduce_missing_values(
-            test_instance
-        )
-
-        if self.debug:
-            print(f"test_instance after introducing missing values {test_instance}")
-
-        indices_with_missing_values = get_indices_with_missing_values(test_instance)
-
-        return (
-            test_instance_complete,
-            test_instance_with_missing_values,
-            indices_with_missing_values,
-        )
-
-    def _train_and_generate(self, row_ind: int, classifier: Classifier):
-        """Train model without selected test row and create counterfactuals
-        for test row. Store metrics in dict.
-
-        :param int row_ind: row index in data to test
-        :param Classifier classifier: classifier
+        :param np.array data_without_test_instance: data with test instance row removed
+        :return tuple[np.array, np.array]: X_train, y_train
         """
-
-        # Get test instance and copy with missing values introduced
-        (
-            test_instance_complete,
-            test_instance_with_missing_values,
-            indices_with_missing_values,
-        ) = self._get_and_impute_test_instance(row_ind)
-
-        # Create train and test datasets
-        data_without_test_instance = np.delete(self.data, row_ind, 0)
         X_train = data_without_test_instance[:, self.predictor_indices]
         y_train = data_without_test_instance[:, self.target_index].ravel()
-        classifier.train(X_train, y_train)
-        cf_generator = CounterfactualGenerator(classifier, None, None)
+        return X_train, y_train
 
-        # Impute missing value(s) in test instance
+    def _impute_test_instance(
+        self,
+        data_without_test_instance: np.array,
+        test_instance: np.array,
+        indices_with_missing_values: np.array,
+    ) -> np.array:
+        """Impute test instance with missing values using chosen imputation technique.
+
+        :param np.array data_without_test_instance: dataset with test instance removed
+        :param np.array test_instance: test instance
+        :param np.array indices_with_missing_values: indices with missing values in test instance
+        :return np.array: test instance with missing values imputed
+        """
         imputer = Imputer()
-        test_instance_imputed = imputer.mean_imputation(
+        return imputer.mean_imputation(
             data_without_test_instance,
-            test_instance_with_missing_values,
+            test_instance,
             indices_with_missing_values,
         )
 
-        prediction = classifier.predict(test_instance_imputed)
-        if prediction == 1:
-            time_1 = time.time()
-            counterfactuals = cf_generator.generate_explanations(
-                test_instance_imputed, None, 3, "GS", self.debug
-            )
-            time_2 = time.time()
-            wall_time = time_2 - time_1
+    def _get_counterfactual(self, test_instance: np.array) -> tuple[np.array, float]:
+        """Generate counterfactual with alternative vectors.
 
-            evaluator = CounterfactualEvaluator(X_train)
-            test_instance_metrics = evaluator.evaluate_explanation(
-                test_instance_complete,
-                test_instance_imputed,
-                counterfactuals,
-                classifier.predict,
-                0,
-                wall_time,
+        :param np.array test_instance: original vector
+        :return tuple[np.array, float]: set of alternative vectors and generation wall clock time
+        """
+        cf_generator = CounterfactualGenerator(self.classifier, None, None)
+        time_start = time.time()
+        counterfactual = cf_generator.generate_explanations(
+            test_instance, None, 3, "GS", self.debug
+        )
+        time_end = time.time()
+        wall_time = time_end - time_start
+        return counterfactual, wall_time
+
+    def _evaluate_single_instance(self, row_ind: int) -> dict[str, float]:
+        """Return metrics for counterfactual generated for single test instance.
+        Introduces potential missing values to test instance, imputes them,
+        generates counterfactual and evaluates it.
+
+        :param int row_ind: row index of test instance in test data
+        :return dict[str, float]: metrics for evaluated instance
+        """
+        test_instance_complete = self._get_test_instance(row_ind)
+        test_instance_with_missing_values = self._introduce_missing_values(
+            test_instance_complete
+        )
+        indices_with_missing_values = get_indices_with_missing_values(
+            test_instance_with_missing_values
+        )
+
+        test_instance_metrics = {}
+        if len(indices_with_missing_values) == 0:
+            test_instance_metrics = {"num_missing_values": 0}
+            # Skip rest as no missing values were generated (happens in MAR or MNAR case)
+            # Todo: should MCAR also contain vecs with no missing values?
+        else:
+            data_without_test_instance = np.delete(self.data, row_ind, 0)
+            X_train, y_train = self._get_X_train_y_train(data_without_test_instance)
+            self.classifier.train(X_train, y_train)
+            test_instance_imputed = self._impute_test_instance(
+                data_without_test_instance,
+                test_instance_with_missing_values,
+                indices_with_missing_values,
             )
-            for metric_name in self.metric_names:
-                self.metrics.get(metric_name).append(
-                    test_instance_metrics.get(metric_name)
+            # Make prediction
+            prediction = self.classifier.predict(test_instance_imputed)
+            if prediction == 1:
+                # Generate counterfactual
+                counterfactual, wall_time = self._get_counterfactual(
+                    test_instance_imputed
                 )
+                # Evaluate generated counterfactual vs. original vector before introducing missing values
+                evaluator = CounterfactualEvaluator(X_train)
+                test_instance_metrics = evaluator.evaluate_explanation(
+                    test_instance_complete, counterfactual, self.classifier.predict, 0
+                )
+                test_instance_metrics["runtime_seconds"] = wall_time
+                test_instance_metrics["num_missing_values"] = len(
+                    indices_with_missing_values
+                )
+
+        return test_instance_metrics
 
     def perform_loocv_evaluation(self):
         """Evaluate counterfactual generation process for configurations given on init.
 
         :return dict avg_metrics: average metrics
         """
-
-        if self.config[config_classifier] == config_logistic_regression:
-            classifier = Classifier(self.num_indices)
-
+        metrics = {metric: [] for metric in self.metric_names}
         for row_ind in range(len(self.data)):
-            self._train_and_generate(row_ind, classifier)
-
-        averages = [
-            np.mean(np.array(metric_arr)) for metric_arr in self.metrics.values()
-        ]
-        final_metric_names = [
-            "avg_" + metric_name if not metric_name.startswith("avg_") else metric_name
-            for metric_name in self.metric_names
-        ]
-        avg_metrics = {
-            metric_name: avg_metric
-            for metric_name, avg_metric in zip(final_metric_names, averages)
-        }
-        return avg_metrics
+            single_instance_metrics = self._evaluate_single_instance(row_ind)
+            for metric_name, metric_value in single_instance_metrics.items():
+                metrics[metric_name].append(metric_value)
+        return metrics

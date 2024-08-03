@@ -64,6 +64,30 @@ def transform_target_to_binary_class(
     return data
 
 
+def show_correlation_matrix(data: pd.DataFrame):
+    """Plots correlation matrix.
+
+    :param pd.DataFrame data: data
+    """
+    f = plt.figure(figsize=(12, 10))
+    plt.matshow(data.corr(), fignum=f.number)
+    plt.xticks(
+        range(data.select_dtypes(["number"]).shape[1]),
+        data.select_dtypes(["number"]).columns,
+        fontsize=14,
+        rotation=45,
+    )
+    plt.yticks(
+        range(data.select_dtypes(["number"]).shape[1]),
+        data.select_dtypes(["number"]).columns,
+        fontsize=14,
+    )
+    cb = plt.colorbar()
+    cb.ax.tick_params(labelsize=14)
+    plt.title("Correlation Matrix", fontsize=16)
+    plt.show()
+
+
 def explore_data(data: pd.DataFrame):
     """Print auto-generated summaries and plots for dataframe.
 
@@ -79,6 +103,7 @@ def explore_data(data: pd.DataFrame):
     print(data.corr())
     data.hist()
     plt.show()
+    show_correlation_matrix(data)
     print(f"{symbol*42}")
 
 
@@ -129,6 +154,49 @@ def get_indices_with_missing_values(sample: np.array) -> np.array:
     :return np.array: indices of features with missing values
     """
     return np.where(np.isnan(sample))[0]
+
+
+def get_averages_from_dict_of_arrays(arr_dict: dict[str, np.array]) -> dict[str, float]:
+    """Given a dict of numpy arrays, returns a new dict with averages
+    for each array.
+
+    :param dict[str, np.array] arr_dict: dict with numpy arrays
+    :return dict[str, float]: dict with array averages
+    """
+    avg_metric_names = [
+        "avg_" + metric_name if not metric_name.startswith("avg_") else metric_name
+        for metric_name in arr_dict.keys()
+    ]
+    averages = [np.mean(np.array(metric_arr)) for metric_arr in arr_dict.values()]
+    return {
+        metric_name: avg_metric
+        for metric_name, avg_metric in zip(avg_metric_names, averages)
+    }
+
+
+def plot_metric_histograms(
+    metrics: dict[str, np.array], save_to_file: bool, file_path: str = None
+):
+    """Plots histograms of each metric and saves image to given path if save_to_file is True.
+
+    :param dict[str, np.array] metrics: dict of metrics
+    :param bool save_to_file: whether to save image
+    :param str file_path: file path for saving image, defaults to None
+    """
+    fig, axes = plt.subplots(2, 4, figsize=(19, 15))
+    axes = axes.flatten()
+    for i, (metric_name, metric_values) in enumerate(metrics.items()):
+        axes[i].hist(metric_values)
+        axes[i].set_title(metric_name)
+
+    # Remove empty subplots
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    plt.tight_layout()
+    if save_to_file:
+        plt.savefig(file_path)
+    plt.show()
 
 
 def get_test_input_1() -> dict:

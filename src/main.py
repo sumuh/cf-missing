@@ -1,94 +1,45 @@
-import pandas as pd
-import numpy as np
 import os
+import json
 from datetime import datetime
-from .classifier import Classifier
-from .counterfactual_generator import CounterfactualGenerator
-from .imputer import Imputer
-from .evaluation import CounterfactualEvaluator, LoocvEvaluator
+from pathlib import Path
+from .evaluation import LoocvEvaluator
 from .data_utils import (
     load_data,
     explore_data,
-    get_cat_indices,
-    get_num_indices,
-    get_indices_with_missing_values,
-    get_target_index,
-    get_test_input_1,
-    get_test_input_2,
+    get_averages_from_dict_of_arrays,
     get_diabetes_dataset_config,
     get_wine_dataset_config,
+    plot_metric_histograms,
     transform_target_to_binary_class,
 )
 from .constants import *
 
 
-def test_single_instance():
-    data = load_data()
-    print(data)
-    # explore_data(data)
-    target_index = get_target_index(data, "Outcome")
-    cat_indices = get_cat_indices(data, target_index)
-    num_indices = get_num_indices(data, target_index)
-    predictor_indices = np.sort(np.concatenate([cat_indices, num_indices]))
-    X_train = data.iloc[:, predictor_indices].to_numpy()
-    y_train = data.iloc[:, target_index].to_numpy().ravel()
-    data_np = data.to_numpy()
-
-    classifier = Classifier(num_indices)
-    classifier.train(X_train, y_train)
-
-    # input = pd.DataFrame([get_test_input_1()])
-    input = pd.DataFrame([get_test_input_2()])
-    # Change single value to missing
-    input.at[0, "Insulin"] = pd.NA
-    input = input.to_numpy().ravel()
-
-    n = 1
-    indices_with_missing_values = get_indices_with_missing_values(input)
-    if len(indices_with_missing_values) > 0:
-        imputer = Imputer()
-        # input = imputer.mean_imputation(data_np, input, indices_with_missing_values, n)
-        input = imputer.multiple_imputation(
-            data_np, input, indices_with_missing_values, target_index, n
-        )
-    else:
-        input = np.array([input])
-
-    print(f"Input: {input}")
-
-    for row in range(input.shape[0]):
-        prediction, probability = classifier.predict_with_proba(input[row, :])
-        print(f"Prediction was {prediction}, probability of 1 was {probability}\n")
-
-    cf_generator = CounterfactualGenerator(classifier, data, target_index)
-
-    if prediction == 1:
-        counterfactuals = cf_generator.generate_explanations(
-            input, indices_with_missing_values, 3
-        )
-
-        if counterfactuals.ndim == 1:
-            counterfactuals = np.array([counterfactuals])
-
-        evaluator = Evaluator(X_train)
-        evaluator.evaluate_explanation(input[0], counterfactuals, classifier.predict, 0)
-
-
 def main():
-    SAVE_TO_FILE = True
+    # Enable saving evaluation results to file, if False will only print to console
+    SAVE_RESULTS = True
+    # Enable debug/verbose mode
     DEBUG = False
+    # Show plots while running
+    SHOW_PLOTS = True
 
-    if SAVE_TO_FILE:
-        results_dir = (
-            f"{os.path.dirname(os.path.realpath(__file__))}/../evaluation_results"
-        )
+    if SAVE_RESULTS:
         current_time = datetime.now()
-        formatted_time = current_time.strftime("%d-%m-%Y-%H-%M-%S")
-        results_filename = f"{results_dir}/results-{formatted_time}.txt"
+        formatted_time_day = current_time.strftime("%d-%m-%Y")
+        formatted_time_sec = current_time.strftime("%d-%m-%Y-%H-%M-%S")
+        results_dir = f"{os.path.dirname(os.path.realpath(__file__))}/../evaluation_results/{formatted_time_day}/{formatted_time_sec}"
+        # Create new dir for each test
+        Path(results_dir).mkdir(parents=True, exist_ok=True)
+        results_filename = f"{results_dir}/results-{formatted_time_sec}.txt"
 
+    # Choose and load dataset to use
     data_config = get_wine_dataset_config()
     data = load_data(data_config[config_file_path], data_config[config_separator])
 
+    if SHOW_PLOTS:
+        explore_data(data)
+
+    # For now multiclass classification is not supported so convert to binary class if needed
     if data_config[config_multiclass_target]:
         data = transform_target_to_binary_class(
             data,
@@ -98,27 +49,35 @@ def main():
 
     evaluation_config = {
         config_classifier: config_logistic_regression,
-        config_missing_data_mechanism: config_MCAR,
+        config_missing_data_mechanism: config_MAR,
         config_dataset_name: data_config[config_dataset_name],
         config_target_name: data_config[config_target_name],
         config_multiclass_target: data_config[config_multiclass_target],
         config_debug: DEBUG,
     }
 
+    # Evaluate counterfactual generation for each row in dataset and return average metrics
     loocv_evaluator = LoocvEvaluator(data, evaluation_config)
-    results = loocv_evaluator.perform_loocv_evaluation()
+    results_dict = loocv_evaluator.perform_loocv_evaluation()
+    averages_dict = get_averages_from_dict_of_arrays(results_dict)
 
-    print(f"config: {evaluation_config}")
-    print(f"results: {results}")
+    print(f"config\n{json.dumps(evaluation_config, indent=2)}")
+    print(f"results\n{json.dumps(averages_dict, indent=2)}")
 
-    if SAVE_TO_FILE:
+    if SAVE_RESULTS:
+        histogram_file = f"{results_dir}/results-hist-{formatted_time_sec}.png"
+        plot_metric_histograms(results_dict, True, histogram_file)
+    elif SHOW_PLOTS:
+        plot_metric_histograms(results_dict, False)
+
+    if SAVE_RESULTS:
         # Pretty print config and results to file
         with open(results_filename, "w") as results_file:
             config_str = "config\n" + "\n".join(
                 [f"{item[0]}\t{item[1]}" for item in evaluation_config.items()]
             )
             results_str = "results\n" + "\n".join(
-                [f"{item[0]}\t{item[1]}" for item in results.items()]
+                [f"{item[0]}\t{item[1]}" for item in averages_dict.items()]
             )
             results_file.write(f"{config_str}\n\n{results_str}")
 
