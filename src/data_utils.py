@@ -15,6 +15,7 @@ def get_wine_dataset_config() -> dict:
         config_dataset_name: "WineQuality red",
         config_file_path: "winequality/winequality-red.csv",
         config_target_name: "quality",
+        config_target_class: 1,
         config_multiclass_target: True,
         config_missing_values: False,
         config_multiclass_threshold: 5,
@@ -31,6 +32,7 @@ def get_diabetes_dataset_config() -> dict:
         config_dataset_name: "Pima Indians Diabetes",
         config_file_path: "diabetes.csv",
         config_target_name: "Outcome",
+        config_target_class: 0,
         config_multiclass_target: False,
         config_missing_values: True,
         config_separator: ",",
@@ -145,6 +147,14 @@ def get_num_indices(data: pd.DataFrame, target_index: int) -> np.array:
     return np.array(
         [data.columns.get_loc(predictor_name) for predictor_name in num_predictor_names]
     )
+
+
+def get_feature_min_values(data: np.array) -> float:
+    return np.min(data, axis=0)
+
+
+def get_feature_max_values(data: np.array) -> float:
+    return np.max(data, axis=0)
 
 
 def get_indices_with_missing_values(sample: np.array) -> np.array:

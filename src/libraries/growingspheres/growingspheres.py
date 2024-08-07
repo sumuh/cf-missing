@@ -94,7 +94,10 @@ class GrowingSpheres:
         n_ennemies_ = 999
         radius_ = self.first_radius
 
+        iter = 0
         while n_ennemies_ > 0:
+            if iter > 1000:
+                return first_layer_
 
             first_layer_ = self.ennemies_in_layer_(
                 radius=radius_, caps=self.caps, n=self.n_in_layer, first_layer=True
@@ -110,6 +113,7 @@ class GrowingSpheres:
 
                 if n_ennemies_ > 0:
                     print("Zooming in...")
+            iter += 1
         else:
             if self.verbose == True:
                 print("Expanding hypersphere...")

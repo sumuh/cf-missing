@@ -17,11 +17,12 @@ from .constants import *
 
 def main():
     # Enable saving evaluation results to file, if False will only print to console
-    SAVE_RESULTS = True
+    SAVE_RESULTS = False
     # Enable debug/verbose mode
     DEBUG = False
     # Show plots while running
-    SHOW_PLOTS = True
+    SHOW_PLOTS = False
+    print("Running evaluation...")
 
     if SAVE_RESULTS:
         current_time = datetime.now()
@@ -50,11 +51,9 @@ def main():
     evaluation_config = {
         config_classifier: config_logistic_regression,
         config_missing_data_mechanism: config_MAR,
-        config_dataset_name: data_config[config_dataset_name],
-        config_target_name: data_config[config_target_name],
-        config_multiclass_target: data_config[config_multiclass_target],
         config_debug: DEBUG,
     }
+    evaluation_config.update(data_config)
 
     # Evaluate counterfactual generation for each row in dataset and return average metrics
     loocv_evaluator = LoocvEvaluator(data, evaluation_config)

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import time
+import json
 from typing import Callable
 
 from .classifier import Classifier
@@ -198,6 +199,10 @@ class LoocvEvaluator:
 
         self.data = data.to_numpy()
 
+        self.cf_generator = CounterfactualGenerator(
+            self.classifier, self.config[config_target_class], self.debug
+        )
+
         self.metric_names = [
             "n_vectors",
             "valid_ratio",
@@ -276,23 +281,32 @@ class LoocvEvaluator:
         :param np.array indices_with_missing_values: indices with missing values in test instance
         :return np.array: test instance with missing values imputed
         """
-        imputer = Imputer()
+        imputer = Imputer(data_without_test_instance)
         return imputer.mean_imputation(
-            data_without_test_instance,
             test_instance,
             indices_with_missing_values,
         )
 
-    def _get_counterfactual(self, test_instance: np.array) -> tuple[np.array, float]:
+    def _get_counterfactual(
+        self,
+        test_instance_with_missing_values: np.array,
+        X_train: np.array,
+        indices_with_missing_values: np.array,
+    ) -> tuple[np.array, float]:
         """Generate counterfactual with alternative vectors.
 
-        :param np.array test_instance: original vector
+        :param np.array test_instance_with_missing_values: original vector with missing values
+        :param np.array X_train: train data without test instance
+        :param np.array indices_with_missing_values: indices with missing values in test instance
         :return tuple[np.array, float]: set of alternative vectors and generation wall clock time
         """
-        cf_generator = CounterfactualGenerator(self.classifier, None, None)
         time_start = time.time()
-        counterfactual = cf_generator.generate_explanations(
-            test_instance, None, 3, "GS", self.debug
+        counterfactual = self.cf_generator.generate_explanations(
+            test_instance_with_missing_values,
+            X_train,
+            indices_with_missing_values,
+            3,
+            "GS",
         )
         time_end = time.time()
         wall_time = time_end - time_start
@@ -310,6 +324,10 @@ class LoocvEvaluator:
         test_instance_with_missing_values = self._introduce_missing_values(
             test_instance_complete
         )
+        if self.debug:
+            print(
+                f"test_instance_with_missing_values: {test_instance_with_missing_values}"
+            )
         indices_with_missing_values = get_indices_with_missing_values(
             test_instance_with_missing_values
         )
@@ -330,31 +348,44 @@ class LoocvEvaluator:
             )
             # Make prediction
             prediction = self.classifier.predict(test_instance_imputed)
-            if prediction == 1:
+            if prediction != self.config[config_target_class]:
                 # Generate counterfactual
                 counterfactual, wall_time = self._get_counterfactual(
-                    test_instance_imputed
+                    test_instance_with_missing_values,
+                    X_train,
+                    indices_with_missing_values,
                 )
                 # Evaluate generated counterfactual vs. original vector before introducing missing values
                 evaluator = CounterfactualEvaluator(X_train)
                 test_instance_metrics = evaluator.evaluate_explanation(
-                    test_instance_complete, counterfactual, self.classifier.predict, 0
+                    test_instance_complete,
+                    counterfactual,
+                    self.classifier.predict,
+                    self.config[config_target_class],
                 )
                 test_instance_metrics["runtime_seconds"] = wall_time
                 test_instance_metrics["num_missing_values"] = len(
                     indices_with_missing_values
                 )
+                if self.debug:
+                    print(
+                        f"test_instance_metrics: {json.dumps(test_instance_metrics, indent=2)}"
+                    )
 
         return test_instance_metrics
 
     def perform_loocv_evaluation(self):
         """Evaluate counterfactual generation process for configurations given on init.
 
-        :return dict avg_metrics: average metrics
+        :return dict metrics: dict containing metric arrays for all test instances
         """
+        num_rows = len(self.data)
         metrics = {metric: [] for metric in self.metric_names}
-        for row_ind in range(len(self.data)):
+        for row_ind in range(num_rows):
             single_instance_metrics = self._evaluate_single_instance(row_ind)
             for metric_name, metric_value in single_instance_metrics.items():
                 metrics[metric_name].append(metric_value)
+            if row_ind % 100 == 0:
+                print(f"Evaluated {row_ind}/{num_rows} rows")
+        print(f"Evaluated {num_rows}/{num_rows} rows")
         return metrics
