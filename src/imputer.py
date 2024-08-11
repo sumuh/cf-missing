@@ -2,7 +2,7 @@ import sys
 import pandas as pd
 import numpy as np
 import pymc as pm
-from sklearn.linear_model import LinearRegression, BayesianRidge
+from sklearn.linear_model import BayesianRidge
 from scipy import stats
 from .data_utils import get_feature_min_values, get_feature_max_values
 
@@ -49,7 +49,9 @@ class Imputer:
         :param np.array indices_with_missing_values: indices of input where value is missing
         :return np.array: imputed version of input
         """
-        input[indices_with_missing_values] = self.feature_means[indices_with_missing_values]
+        input[indices_with_missing_values] = self.feature_means[
+            indices_with_missing_values
+        ]
         return input
 
     def subgroup_mean_imputation(

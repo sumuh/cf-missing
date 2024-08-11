@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-import math
 from .constants import *
 
 
@@ -155,6 +154,26 @@ def get_feature_min_values(data: np.array) -> float:
 
 def get_feature_max_values(data: np.array) -> float:
     return np.max(data, axis=0)
+
+
+def _calculate_mad(values: np.array) -> float:
+    """Calculates the mean absolute deviation (MAD) of values.
+
+    :param np.array values: vector of values
+    :return float: MAD of values
+    """
+    if len(values) == 0:
+        return None
+    return np.sum(abs(values - np.mean(values))) / len(values)
+
+
+def get_feature_mads(data: np.array) -> np.array:
+    """Get MAD (mean absolute deviation) for each column (feature) in data.
+
+    :param np.array data: data to calculate MADS for
+    :return np.array: MAD for each feature
+    """
+    return np.apply_along_axis(_calculate_mad, 0, data)
 
 
 def get_indices_with_missing_values(sample: np.array) -> np.array:

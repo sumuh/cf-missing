@@ -2,7 +2,7 @@ import os
 import json
 from datetime import datetime
 from pathlib import Path
-from .evaluation import LoocvEvaluator
+from .evaluation.evaluator import Evaluator
 from .data_utils import (
     load_data,
     explore_data,
@@ -56,8 +56,8 @@ def main():
     evaluation_config.update(data_config)
 
     # Evaluate counterfactual generation for each row in dataset and return average metrics
-    loocv_evaluator = LoocvEvaluator(data, evaluation_config)
-    results_dict = loocv_evaluator.perform_loocv_evaluation()
+    evaluator = Evaluator(data, evaluation_config)
+    results_dict = evaluator.perform_evaluation()
     averages_dict = get_averages_from_dict_of_arrays(results_dict)
 
     print(f"config\n{json.dumps(evaluation_config, indent=2)}")
