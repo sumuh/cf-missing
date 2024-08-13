@@ -70,3 +70,6 @@ class Classifier:
         else:
             predicted_class = 0
         return (predicted_class, prob_positive)
+
+    def get_classifier(self):
+        return self.pipeline

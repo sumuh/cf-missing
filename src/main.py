@@ -15,6 +15,17 @@ from .data_utils import (
 from .constants import *
 
 
+# Todo: remove after fixing sklearn UserWarning: X has feature names, but MinMaxScaler was fitted without feature names
+# (maybe fit with pd df)
+def warn(*args, **kwargs):
+    pass
+
+
+import warnings
+
+warnings.warn = warn
+
+
 def main():
     # Enable saving evaluation results to file, if False will only print to console
     SAVE_RESULTS = False

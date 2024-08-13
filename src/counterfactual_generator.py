@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+import dice_ml
+import sys, os
 from itertools import combinations
 
 from .classifier import Classifier
@@ -16,11 +18,48 @@ class CounterfactualGenerator:
         self.target_class = target_class
         self.debug = debug
 
-    def _get_growing_spheres_counterfactual(self, input: np.array) -> np.array:
+    # Disable
+    def block_print(self):
+        sys.stderr = open(os.devnull, "w")
+
+    # Restore
+    def enable_print(self):
+        sys.stderr = sys.__stderr__
+
+    def _get_dice_counterfactuals(
+        self, input: np.array, data: pd.DataFrame
+    ) -> np.array:
         """Returns a counterfactual generated with the GrowingSpheres algorithm.
 
         :param np.array input: input array
+        :param pd.DataFrame data: dataset
         :return np.array: generated counterfactual
+        """
+        predictor_col_names = [
+            name for name in data.columns.to_list() if name != "quality"
+        ]
+        dice_data = dice_ml.Data(
+            dataframe=data,
+            outcome_name="quality",
+            continuous_features=predictor_col_names,
+        )
+        model = dice_ml.Model(model=self.classifier.get_classifier(), backend="sklearn")
+        exp = dice_ml.Dice(dice_data, model, method="genetic")
+        self.block_print()
+        e1 = exp.generate_counterfactuals(
+            pd.DataFrame(input.reshape(-1, len(input)), columns=predictor_col_names),
+            total_CFs=3,
+            desired_class="opposite",
+            verbose=False,
+        )
+        self.enable_print()
+        return e1.cf_examples_list[0].final_cfs_df.to_numpy()[:, :-1]
+
+    def _get_growing_spheres_counterfactual(self, input: np.array) -> np.array:
+        """Returns diverse counterfactuals generated with the DiCe library.
+
+        :param np.array input: input array
+        :return np.array: generated counterfactuals
         """
         gs_model = gs.GrowingSpheres(
             obs_to_interprete=np.array([input]),
@@ -73,6 +112,7 @@ class CounterfactualGenerator:
         X_train: np.array,
         indices_with_missing_values: np.array,
         n: int,
+        data_pd: pd.DataFrame,
         method: str = "GS",
     ) -> np.array:
         """Generate explanation for input vector(s).
@@ -84,7 +124,7 @@ class CounterfactualGenerator:
         :param str method: counterfactual generation method
         :return np.array: array with n rows
         """
-        n = 50
+        n = 4
         imputer = Imputer(X_train, True, self.debug)
         mads = get_feature_mads(X_train)
         if self.debug:
@@ -103,10 +143,24 @@ class CounterfactualGenerator:
                     for imputed_input in imputed_inputs
                 ]
             )
-            if self.debug:
-                print(f"Explanations: {explanations}")
+        elif method == "DICE":
+            explanations = None
+            for imputed_input in imputed_inputs:
+                if explanations is None:
+                    explanations = self._get_dice_counterfactuals(
+                        imputed_input, data_pd
+                    )
+                else:
+                    explanations = np.vstack(
+                        (
+                            explanations,
+                            self._get_dice_counterfactuals(imputed_input, data_pd),
+                        )
+                    )
         else:
-            raise NotImplementedError("Only method GS (GrowingSpheres) is implemented!")
+            raise NotImplementedError("Only methods GS and DICE are implemented!")
+        if self.debug:
+            print(f"Explanations: {explanations}")
         final_set_size = 3
         final_explanations = self._perform_final_selection(
             explanations, input, final_set_size, mads

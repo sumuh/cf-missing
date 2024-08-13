@@ -25,12 +25,12 @@ from .evaluation_metrics import (
 
 class Evaluator:
 
-    def __init__(self, data: pd.DataFrame, config: dict):
+    def __init__(self, data_pd: pd.DataFrame, config: dict):
         self.config = config
         self.debug = config[config_debug]
-        self.target_index = get_target_index(data, config.get(config_target_name))
-        self.cat_indices = get_cat_indices(data, self.target_index)
-        self.num_indices = get_num_indices(data, self.target_index)
+        self.target_index = get_target_index(data_pd, config.get(config_target_name))
+        self.cat_indices = get_cat_indices(data_pd, self.target_index)
+        self.num_indices = get_num_indices(data_pd, self.target_index)
         self.predictor_indices = np.sort(
             np.concatenate([self.cat_indices, self.num_indices])
         ).astype(int)
@@ -40,9 +40,10 @@ class Evaluator:
             self.classifier = Classifier(self.num_indices)
 
         if self.debug:
-            print(data.head())
+            print(data_pd.head())
 
-        self.data = data.to_numpy()
+        self.data_pd = data_pd
+        self.data = data_pd.copy().to_numpy()
 
         self.X_train_current = None
         self.indices_with_missing_values_current = None
@@ -171,7 +172,8 @@ class Evaluator:
             self.X_train_current,
             self.indices_with_missing_values_current,
             3,
-            "GS",
+            self.data_pd,
+            "DICE",
         )
         time_end = time.time()
         wall_time = time_end - time_start
@@ -221,8 +223,8 @@ class Evaluator:
                     )
                 )
                 debug_df = pd.DataFrame(debug_arr)
-                print("debug_df")
-                print(debug_df)
+                # print("debug_df")
+                # print(debug_df)
                 # Evaluate generated counterfactuals vs. original vector before introducing missing values
                 test_instance_metrics = self._evaluate_counterfactuals(
                     counterfactuals,
