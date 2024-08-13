@@ -49,10 +49,11 @@ class Imputer:
         :param np.array indices_with_missing_values: indices of input where value is missing
         :return np.array: imputed version of input
         """
-        input[indices_with_missing_values] = self.feature_means[
+        input_copy = input.copy()
+        input_copy[indices_with_missing_values] = self.feature_means[
             indices_with_missing_values
         ]
-        return input
+        return input_copy
 
     def subgroup_mean_imputation(
         self,
@@ -126,12 +127,11 @@ class Imputer:
         """
         multiply_imputed_inputs = []
         for _ in range(n):
-            input_copy = input.copy()
             # Initialize with feature means
-            input_copy = self.mean_imputation(input_copy, indices_with_missing_values)
+            imputed_input = self.mean_imputation(input, indices_with_missing_values)
             multiply_imputed_inputs.append(
                 self._fcs_multiple_impute_input(
-                    input_copy,
+                    imputed_input,
                     indices_with_missing_values,
                 )
             )

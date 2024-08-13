@@ -13,17 +13,22 @@ from .data_utils import get_feature_mads
 
 class CounterfactualGenerator:
 
-    def __init__(self, classifier: Classifier, target_class: int, debug: bool):
+    def __init__(
+        self,
+        classifier: Classifier,
+        target_class: int,
+        target_variable_name: str,
+        debug: bool,
+    ):
         self.classifier = classifier
         self.target_class = target_class
+        self.target_variable_name = target_variable_name
         self.debug = debug
 
-    # Disable
-    def block_print(self):
+    def block_stderr(self):
         sys.stderr = open(os.devnull, "w")
 
-    # Restore
-    def enable_print(self):
+    def enable_stderr(self):
         sys.stderr = sys.__stderr__
 
     def _get_dice_counterfactuals(
@@ -36,24 +41,25 @@ class CounterfactualGenerator:
         :return np.array: generated counterfactual
         """
         predictor_col_names = [
-            name for name in data.columns.to_list() if name != "quality"
+            name for name in data.columns.to_list() if name != self.target_variable_name
         ]
         dice_data = dice_ml.Data(
             dataframe=data,
-            outcome_name="quality",
+            outcome_name=self.target_variable_name,
             continuous_features=predictor_col_names,
         )
         model = dice_ml.Model(model=self.classifier.get_classifier(), backend="sklearn")
         exp = dice_ml.Dice(dice_data, model, method="genetic")
-        self.block_print()
+        # Suppress some sklearn(?) progress bar that is being output to stderr for some reason
+        self.block_stderr()
         e1 = exp.generate_counterfactuals(
             pd.DataFrame(input.reshape(-1, len(input)), columns=predictor_col_names),
             total_CFs=3,
             desired_class="opposite",
             verbose=False,
         )
-        self.enable_print()
-        return e1.cf_examples_list[0].final_cfs_df.to_numpy()[:, :-1]
+        self.enable_stderr()
+        return e1.cf_examples_list[0].final_cfs_df.to_numpy()
 
     def _get_growing_spheres_counterfactual(self, input: np.array) -> np.array:
         """Returns diverse counterfactuals generated with the DiCe library.
@@ -82,6 +88,16 @@ class CounterfactualGenerator:
         lambda_1: float = 0.5,
         lambda_2: float = 1,
     ) -> float:
+        """Loss function modified from Mothilal et al. (2020)
+        for selecting best set of counterfactuals.
+
+        :param np.array candidate_counterfactuals: set of counterfactuals to score
+        :param np.array input: original imputed input
+        :param np.array mads: mean absolute deviationd for each predictor
+        :param float lambda_1: hyperparam, defaults to 0.5
+        :param float lambda_2: hyperparam, defaults to 1
+        :return float: value of loss function
+        """
         dist_sum = 0
         for cf in candidate_counterfactuals:
             dist_sum += get_mad_weighted_distance(cf, input, mads)
@@ -94,7 +110,16 @@ class CounterfactualGenerator:
         input: np.array,
         final_set_size: int,
         mads: np.array,
-    ):
+    ) -> np.array:
+        """Select a limited number of counterfactuals based on those
+        that minimize the loss function.
+
+        :param np.array counterfactuals: counterfactuals
+        :param np.array input: original imputed input
+        :param int final_set_size: number of counterfactuals to return
+        :param np.array mads: mean absolute deviations for each predictor
+        :return np.array: set of counterfactuals of size final_set_size
+        """
         best_loss = float("inf")
         best_set = None
         for comb in combinations(counterfactuals, final_set_size):
@@ -105,6 +130,14 @@ class CounterfactualGenerator:
                 best_set = current_set
 
         return best_set
+
+    def _filter_out_non_valid(self, counterfactuals: np.array) -> np.array:
+        """Filter out counterfactuals that are not valid.
+
+        :param np.array counterfactuals: counterfactuals
+        :return np.array: valid counterfactuals
+        """
+        return counterfactuals[counterfactuals[:, -1] == 0]
 
     def generate_explanations(
         self,
@@ -161,9 +194,12 @@ class CounterfactualGenerator:
             raise NotImplementedError("Only methods GS and DICE are implemented!")
         if self.debug:
             print(f"Explanations: {explanations}")
+        valid_explanations = self._filter_out_non_valid(explanations)
+        if len(valid_explanations) == 0:
+            return np.array([])
         final_set_size = 3
         final_explanations = self._perform_final_selection(
-            explanations, input, final_set_size, mads
+            valid_explanations[:, :-1], input, final_set_size, mads
         )
         if self.debug:
             print(f"Final selections: {final_explanations}")

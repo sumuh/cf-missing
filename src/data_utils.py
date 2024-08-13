@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+from collections import defaultdict
 from .constants import *
 
 
@@ -201,6 +202,22 @@ def get_averages_from_dict_of_arrays(arr_dict: dict[str, np.array]) -> dict[str,
         metric_name: avg_metric
         for metric_name, avg_metric in zip(avg_metric_names, averages)
     }
+
+
+def get_counts_of_values_in_arrays(list_of_arrs: list[np.array]) -> dict[str, int]:
+    """Given a list of numpy arrays, returns a dict where keys are unique values
+    and values are occurrence counts of those values across all arrays.
+
+    :param list[np.array] list_of_arrs: list of numpy arrays
+    :return dict[str, int]: dict mapping values to occurrence counts
+    """
+    count_dict = defaultdict(int)
+    for arr in list_of_arrs:
+        arr = arr.flatten()
+        for value in np.unique(arr):
+            count_dict[str(value)] += int(np.sum(arr == value))
+
+    return dict(count_dict)
 
 
 def plot_metric_histograms(

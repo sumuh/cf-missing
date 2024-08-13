@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import time
 import json
+import sys
+import random
 from typing import Callable
 
 from ..classifier import Classifier
@@ -51,18 +53,11 @@ class Evaluator:
         self.test_instance_with_missing_values_current = None
 
         self.cf_generator = CounterfactualGenerator(
-            self.classifier, self.target_class, self.debug
+            self.classifier,
+            self.target_class,
+            config.get(config_target_name),
+            self.debug,
         )
-
-        self.metric_names = [
-            "n_vectors",
-            "valid_ratio",
-            "avg_dist_from_original",
-            "diversity",
-            "avg_sparsity",
-            "runtime_seconds",
-            "num_missing_values",
-        ]
 
         if self.debug:
             print(f"\ncat_indices: {type(self.cat_indices)} {self.cat_indices}")
@@ -112,20 +107,27 @@ class Evaluator:
         """
         test_instance_with_missing_values = self.test_instance_complete_current.copy()
         mechanism = self.config[config_missing_data_mechanism]
+        number = self.config[config_number_of_missing_values]
+        ind_missing = None
         if mechanism == config_MCAR:
-            test_instance_with_missing_values[3] = np.nan
+            ind_missing = [
+                random.randrange(0, len(test_instance_with_missing_values))
+                for _ in range(number)
+            ]
         elif mechanism == config_MAR:
-            # if sulphates is small, volatile acidity is missing
-            if self.test_instance_complete_current[9] < 0.9:
-                test_instance_with_missing_values[1] = np.nan
+            # if pedigree fun is below 0.5, insuling is missing
+            if self.test_instance_complete_current[6] < 0.5:
+                test_instance_with_missing_values[4] = np.nan
         elif mechanism == config_MNAR:
-            # if pH is large, pH is missing
-            if self.test_instance_complete_current[8] > 3.4:
-                test_instance_with_missing_values[8] = np.nan
+            # if BMI is over 30, BMI is missing
+            if self.test_instance_complete_current[5] > 30:
+                test_instance_with_missing_values[5] = np.nan
         else:
             raise RuntimeError(
                 f"Invalid missing data mechanism '{mechanism}'; excpected one of MCAR, MAR, MNAR"
             )
+        if ind_missing is not None:
+            test_instance_with_missing_values[ind_missing] = np.nan
         return test_instance_with_missing_values
 
     def _get_test_instance(self, row_ind: int) -> np.array:
@@ -168,7 +170,7 @@ class Evaluator:
         """
         time_start = time.time()
         counterfactuals = self.cf_generator.generate_explanations(
-            self.test_instance_with_missing_values_current,
+            self.test_instance_imputed_current,
             self.X_train_current,
             self.indices_with_missing_values_current,
             3,
@@ -179,7 +181,29 @@ class Evaluator:
         wall_time = time_end - time_start
         return counterfactuals, wall_time
 
-    def _evaluate_single_instance(self, row_ind: int) -> dict[str, float]:
+    def _get_example_df(self, counterfactuals: np.array) -> pd.DataFrame:
+        """Creates dataframe from one test instance and the counterfactuals
+         generated for it. For qualitative evaluation of counterfactuals.
+
+        :param np.array counterfactuals: counterfactuals
+        :return pd.DataFrame: example df
+        """
+        example_df = np.vstack(
+            (
+                self.test_instance_complete_current,
+                self.test_instance_with_missing_values_current,
+                self.test_instance_imputed_current,
+                counterfactuals,
+            )
+        )
+        index = ["complete input", "input with missing", "imputed input"]
+        for _ in range(len(counterfactuals)):
+            index.append("counterfactual")
+        return pd.DataFrame(example_df, index=index)
+
+    def _evaluate_single_instance(
+        self, row_ind: int, return_example: bool
+    ) -> tuple[dict[str, float], pd.DataFrame]:
         """Return metrics for counterfactuals generated for single test instance.
         Introduces potential missing values to test instance, imputes them,
         generates counterfactual and evaluates it.
@@ -200,6 +224,7 @@ class Evaluator:
         )
 
         test_instance_metrics = {}
+        example_df = None
         if len(self.indices_with_missing_values_current) == 0:
             test_instance_metrics = {"num_missing_values": 0}
             # Skip rest as no missing values were generated (happens in MAR or MNAR case)
@@ -209,29 +234,27 @@ class Evaluator:
             X_train, y_train = self._get_X_train_y_train(data_without_test_instance)
             self.X_train_current = X_train
             self.classifier.train(X_train, y_train)
-            test_instance_imputed = self._impute_test_instance()
+            self.test_instance_imputed_current = self._impute_test_instance()
             # Make prediction
-            prediction = self.classifier.predict(test_instance_imputed)
+            prediction = self.classifier.predict(self.test_instance_imputed_current)
             if prediction != self.target_class:
                 # Generate counterfactuals
                 counterfactuals, wall_time = self._get_counterfactuals()
-                debug_arr = np.vstack(
-                    (
-                        self.test_instance_complete_current,
-                        test_instance_imputed,
+                if return_example:
+                    example_df = self._get_example_df(counterfactuals)
+                if len(counterfactuals) > 0:
+                    # Evaluate generated counterfactuals vs. original vector before introducing missing values
+                    test_instance_metrics = self._evaluate_counterfactuals(
                         counterfactuals,
+                        self.classifier.predict,
                     )
-                )
-                debug_df = pd.DataFrame(debug_arr)
-                # print("debug_df")
-                # print(debug_df)
-                # Evaluate generated counterfactuals vs. original vector before introducing missing values
-                test_instance_metrics = self._evaluate_counterfactuals(
-                    counterfactuals,
-                    self.classifier.predict,
-                )
+                else:
+                    test_instance_metrics["no_cf_found"] = 1
                 test_instance_metrics["runtime_seconds"] = wall_time
                 test_instance_metrics["num_missing_values"] = len(
+                    self.indices_with_missing_values_current
+                )
+                test_instance_metrics["missing_value_indices"] = (
                     self.indices_with_missing_values_current
                 )
                 if self.debug:
@@ -239,20 +262,33 @@ class Evaluator:
                         f"test_instance_metrics: {json.dumps(test_instance_metrics, indent=2)}"
                     )
 
-        return test_instance_metrics
+        return (test_instance_metrics, example_df)
 
     def perform_evaluation(self):
         """Evaluate counterfactual generation process for configurations given on init.
 
         :return dict metrics: dict containing metric arrays for all test instances
         """
+        all_metric_names = [
+            "n_vectors",
+            "valid_ratio",
+            "avg_dist_from_original",
+            "diversity",
+            "avg_sparsity",
+            "no_cf_found",
+            "runtime_seconds",
+            "num_missing_values",
+            "missing_value_indices",
+        ]
         num_rows = len(self.data)
-        metrics = {metric: [] for metric in self.metric_names}
+        metrics = {metric: [] for metric in all_metric_names}
         for row_ind in range(num_rows):
-            single_instance_metrics = self._evaluate_single_instance(row_ind)
+            result = self._evaluate_single_instance(row_ind, row_ind % 100 == 0)
+            single_instance_metrics = result[0]
             for metric_name, metric_value in single_instance_metrics.items():
                 metrics[metric_name].append(metric_value)
             if row_ind % 100 == 0:
                 print(f"Evaluated {row_ind}/{num_rows} rows")
+                print(result[1])
         print(f"Evaluated {num_rows}/{num_rows} rows")
         return metrics
