@@ -82,12 +82,13 @@ def get_diversity(cf_vectors: np.array, mads: np.array) -> float:
     """
     if len(cf_vectors) == 0:
         return 0
+    num_features = cf_vectors.shape[1]
     sum_distances = 0
     for i in range(len(cf_vectors)):
         for j in range(i + 1, len(cf_vectors)):
             sum_distances += get_mad_weighted_distance(
                 cf_vectors[i, :], cf_vectors[j, :], mads
-            )
+            ) / num_features
     return sum_distances / (len(cf_vectors) ** 2)
 
 
