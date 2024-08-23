@@ -7,7 +7,7 @@ from itertools import combinations
 from .classifier import Classifier
 from .libraries.growingspheres import growingspheres as gs
 from .imputer import Imputer
-from .evaluation.evaluation_metrics import get_mad_weighted_distance, get_diversity
+from .evaluation.evaluation_metrics import get_distance, get_diversity
 from .data_utils import get_feature_mads
 
 
@@ -100,7 +100,7 @@ class CounterfactualGenerator:
         """
         dist_sum = 0
         for cf in candidate_counterfactuals:
-            dist_sum += get_mad_weighted_distance(cf, input, mads)
+            dist_sum += get_distance(cf, input, mads)
         div = get_diversity(candidate_counterfactuals, mads)
         return lambda_1 / len(candidate_counterfactuals) * dist_sum - lambda_2 * div
 

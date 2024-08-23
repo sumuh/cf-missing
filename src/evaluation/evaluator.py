@@ -16,12 +16,14 @@ from ..data_utils import (
     get_indices_with_missing_values,
     get_target_index,
     get_feature_mads,
+    get_averages_from_dict_of_arrays,
 )
 from .evaluation_metrics import (
     get_average_sparsity,
     get_diversity,
     get_average_distance_from_original,
     get_valid_ratio,
+    get_count_diversity,
 )
 
 
@@ -87,7 +89,15 @@ class Evaluator:
             self.test_instance_complete_current, counterfactuals, mads
         )
         diversity = get_diversity(counterfactuals, mads)
-        # TODO: calculate sparsity from complete or imputed?
+        count_diversity = get_count_diversity(counterfactuals)
+        diversity_missing_values = get_diversity(
+            counterfactuals[:, self.indices_with_missing_values_current],
+            mads[self.indices_with_missing_values_current],
+        )
+        count_diversity_missing_values = get_count_diversity(
+            counterfactuals[:, self.indices_with_missing_values_current]
+        )
+        # Calculate sparsity from imputed test instance
         avg_sparsity = get_average_sparsity(
             self.test_instance_complete_current, counterfactuals
         )
@@ -96,6 +106,9 @@ class Evaluator:
             "valid_ratio": valid_ratio,
             "avg_dist_from_original": avg_dist_from_original,
             "diversity": diversity,
+            "count_diversity": count_diversity,
+            "diversity_missing_values": diversity_missing_values,
+            "count_diversity_missing_values": count_diversity_missing_values,
             "avg_sparsity": avg_sparsity,
         }
 
@@ -107,13 +120,11 @@ class Evaluator:
         """
         test_instance_with_missing_values = self.test_instance_complete_current.copy()
         mechanism = self.config[config_missing_data_mechanism]
-        number = self.config[config_number_of_missing_values]
-        ind_missing = None
         if mechanism == config_MCAR:
-            ind_missing = [
-                random.randrange(0, len(test_instance_with_missing_values))
-                for _ in range(number)
-            ]
+            ind_missing = random.sample(
+                range(0, len(test_instance_with_missing_values)),
+                self.config[config_number_of_missing_values],
+            )
         elif mechanism == config_MAR:
             # if pedigree fun is below 0.5, insuling is missing
             if self.test_instance_complete_current[6] < 0.5:
@@ -251,10 +262,8 @@ class Evaluator:
                 else:
                     test_instance_metrics["no_cf_found"] = 1
                 test_instance_metrics["runtime_seconds"] = wall_time
+                test_instance_metrics["total_undesired_class"] = 1
                 test_instance_metrics["num_missing_values"] = len(
-                    self.indices_with_missing_values_current
-                )
-                test_instance_metrics["missing_value_indices"] = (
                     self.indices_with_missing_values_current
                 )
                 if self.debug:
@@ -264,31 +273,76 @@ class Evaluator:
 
         return (test_instance_metrics, example_df)
 
+    def aggregate_results(self, metrics_to_average, sum_metrics):
+        final_dict = get_averages_from_dict_of_arrays(metrics_to_average)
+        for metric_name, metric in sum_metrics.items():
+            final_dict[metric_name] = metric
+        return final_dict
+
     def perform_evaluation(self):
         """Evaluate counterfactual generation process for configurations given on init.
 
         :return dict metrics: dict containing metric arrays for all test instances
         """
-        all_metric_names = [
+        metrics_to_average_names = [
             "n_vectors",
             "valid_ratio",
             "avg_dist_from_original",
             "diversity",
+            "count_diversity",
+            "diversity_missing_values",
+            "count_diversity_missing_values",
             "avg_sparsity",
-            "no_cf_found",
             "runtime_seconds",
             "num_missing_values",
-            "missing_value_indices",
         ]
+        metrics_to_sum_names = ["total_undesired_class", "no_cf_found"]
+        metrics_for_hist_names = [
+            "avg_dist_from_original",
+            "diversity",
+            "count_diversity",
+            "diversity_missing_values",
+            "count_diversity_missing_values",
+            "avg_sparsity",
+            "runtime_seconds",
+        ]
+
         num_rows = len(self.data)
-        metrics = {metric: [] for metric in all_metric_names}
+        metrics_to_average = {metric: [] for metric in metrics_to_average_names}
+        sum_metrics = {metric: 0 for metric in metrics_to_sum_names}
+
+        if self.debug:
+            show_example = True
+        else:
+            show_example = False
         for row_ind in range(num_rows):
-            result = self._evaluate_single_instance(row_ind, row_ind % 100 == 0)
+            show_example = row_ind % 100 == 0 or show_example
+            result = self._evaluate_single_instance(row_ind, show_example)
             single_instance_metrics = result[0]
             for metric_name, metric_value in single_instance_metrics.items():
-                metrics[metric_name].append(metric_value)
+                if metric_name in metrics_to_average_names:
+                    metrics_to_average[metric_name].append(metric_value)
+                else:
+                    sum_metrics[metric_name] += metric_value
+
             if row_ind % 100 == 0:
                 print(f"Evaluated {row_ind}/{num_rows} rows")
-                print(result[1])
+            # Every 100 rows find example to show
+            if show_example:
+                if result[1] is not None:
+                    print(result[1])
+                    if not self.debug:
+                        show_example = False
+            if self.debug:
+                s = "~"
+                for _ in range(4):
+                    print(f"{(s*20)}")
+
         print(f"Evaluated {num_rows}/{num_rows} rows")
-        return metrics
+        histogram_dict = {
+            metric_name: metric_value
+            for metric_name, metric_value in metrics_to_average.items()
+            if metric_name in metrics_for_hist_names
+        }
+        aggregated_results = self.aggregate_results(metrics_to_average, sum_metrics)
+        return histogram_dict, aggregated_results

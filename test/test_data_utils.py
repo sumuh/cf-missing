@@ -30,20 +30,24 @@ def test_when_three_missing_values_then_three_columns_with_missing_values_found(
     missing_value_indices = get_indices_with_missing_values(sample)
     assert_array_equal(missing_value_indices, np.array([0, 1, 2]))
 
+
 def test_when_mad_is_integer_then_correct_value_calculated():
     arr = np.array([1, 1, 3, 3])
     mad = _calculate_mad(arr)
     assert mad == 1
+
 
 def test_when_mad_is_fraction_then_correct_value_calculated():
     arr = np.array([1, 1, 2, 2])
     mad = _calculate_mad(arr)
     assert mad == 0.5
 
+
 def test_when_mad_is_zero_then_correct_value_calculated():
     arr = np.array([1, 1, 1, 1])
     mad = _calculate_mad(arr)
     assert mad == 0
+
 
 def test_when_input_to_mad_is_empty_then_None_returned():
     arr = np.array([])
