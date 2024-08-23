@@ -81,6 +81,7 @@ class Evaluator:
         :return dict[str, np.array]: dict of metrics
         """
         n_cfs = len(counterfactuals)
+        n_unique_cfs = np.unique(counterfactuals, axis=0).shape[0]
         valid_ratio = get_valid_ratio(
             counterfactuals, prediction_func, self.target_class
         )
@@ -103,6 +104,7 @@ class Evaluator:
         )
         return {
             "n_vectors": n_cfs,
+            "n_unique_vectors": n_unique_cfs,
             "valid_ratio": valid_ratio,
             "avg_dist_from_original": avg_dist_from_original,
             "diversity": diversity,
@@ -286,6 +288,7 @@ class Evaluator:
         """
         metrics_to_average_names = [
             "n_vectors",
+            "n_unique_vectors",
             "valid_ratio",
             "avg_dist_from_original",
             "diversity",
@@ -333,6 +336,7 @@ class Evaluator:
                     print(result[1])
                     if not self.debug:
                         show_example = False
+                    print(json.dumps(single_instance_metrics, indent=2))
             if self.debug:
                 s = "~"
                 for _ in range(4):
