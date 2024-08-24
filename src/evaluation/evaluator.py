@@ -6,7 +6,7 @@ import sys
 import random
 from typing import Callable
 
-from ..classifier import Classifier
+from ..classifiers.classifier_interface import Classifier
 from ..constants import *
 from ..counterfactual_generator import CounterfactualGenerator
 from ..imputer import Imputer
@@ -39,9 +39,7 @@ class Evaluator:
             np.concatenate([self.cat_indices, self.num_indices])
         ).astype(int)
         self.target_class = self.config[config_target_class]
-
-        if self.config[config_classifier] == config_logistic_regression:
-            self.classifier = Classifier(self.num_indices)
+        self.classifier = Classifier(self.config[config_classifier], self.num_indices)
 
         if self.debug:
             print(data_pd.head())
@@ -188,7 +186,7 @@ class Evaluator:
             self.indices_with_missing_values_current,
             3,
             self.data_pd,
-            "DICE",
+            "DiCE",
         )
         time_end = time.time()
         wall_time = time_end - time_start
@@ -277,6 +275,9 @@ class Evaluator:
 
     def aggregate_results(self, metrics_to_average, sum_metrics):
         final_dict = get_averages_from_dict_of_arrays(metrics_to_average)
+        # round
+        for metric_name, metric in final_dict.items():
+            final_dict[metric_name] = round(metric, 3)
         for metric_name, metric in sum_metrics.items():
             final_dict[metric_name] = metric
         return final_dict

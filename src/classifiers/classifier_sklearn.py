@@ -8,7 +8,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.exceptions import NotFittedError
 
 
-class Classifier:
+class ClassifierSklearn:
     """Abstracts details of using the sklearn LogisticRegression classifier."""
 
     def __init__(
@@ -71,5 +71,5 @@ class Classifier:
             predicted_class = 0
         return (predicted_class, prob_positive)
 
-    def get_classifier(self):
+    def get_model(self):
         return self.pipeline

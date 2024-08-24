@@ -4,7 +4,9 @@ import dice_ml
 import sys, os
 from itertools import combinations
 
-from .classifier import Classifier
+from .classifiers.classifier_interface import Classifier
+from .classifiers.classifier_sklearn import ClassifierSklearn
+from .classifiers.classifier_tensorflow import ClassifierTensorFlow
 from .libraries.growingspheres import growingspheres as gs
 from .imputer import Imputer
 from .evaluation.evaluation_metrics import get_distance, get_diversity
@@ -34,12 +36,15 @@ class CounterfactualGenerator:
     def _get_dice_counterfactuals(
         self, input: np.array, data: pd.DataFrame
     ) -> np.array:
-        """Returns a counterfactual generated with the GrowingSpheres algorithm.
+        """Returns a counterfactual generated with the DiCE library.
 
         :param np.array input: input array
         :param pd.DataFrame data: dataset
         :return np.array: generated counterfactual
         """
+        if self.debug:
+            print("Getting DiCE counterfactuals")
+            print(f"input: {input}")
         predictor_col_names = [
             name for name in data.columns.to_list() if name != self.target_variable_name
         ]
@@ -48,17 +53,27 @@ class CounterfactualGenerator:
             outcome_name=self.target_variable_name,
             continuous_features=predictor_col_names,
         )
-        model = dice_ml.Model(model=self.classifier.get_classifier(), backend="sklearn")
-        exp = dice_ml.Dice(dice_data, model, method="genetic")
+        if isinstance(self.classifier.get_classifier(), ClassifierSklearn):
+            model = dice_ml.Model(model=self.classifier.get_model(), backend="sklearn")
+            exp = dice_ml.Dice(dice_data, model, method="genetic")
+        elif isinstance(self.classifier.get_classifier(), ClassifierTensorFlow):
+            model = dice_ml.Model(
+                model=self.classifier.get_model(), backend="TF2", func="ohe-min-max"
+            )
+            exp = dice_ml.Dice(dice_data, model, method="gradient")
+        else:
+            raise RuntimeError(
+                f"Expected one of [ClassifierSklearn, ClassifierTensorFlow], got {self.classifier}"
+            )
         # Suppress some sklearn(?) progress bar that is being output to stderr for some reason
-        self.block_stderr()
+        # self.block_stderr()
         e1 = exp.generate_counterfactuals(
             pd.DataFrame(input.reshape(-1, len(input)), columns=predictor_col_names),
             total_CFs=3,
-            desired_class="opposite",
+            desired_class=self.target_class,
             verbose=False,
         )
-        self.enable_stderr()
+        # explanations = e1.cf_examples_list[0].final_cfs_df
         return e1.cf_examples_list[0].final_cfs_df.to_numpy()
 
     def _get_growing_spheres_counterfactual(self, input: np.array) -> np.array:
@@ -137,7 +152,7 @@ class CounterfactualGenerator:
         :param np.array counterfactuals: counterfactuals
         :return np.array: valid counterfactuals
         """
-        return counterfactuals[counterfactuals[:, -1] == 0]
+        return counterfactuals[counterfactuals[:, -1] < self.classifier.get_threshold()]
 
     def generate_explanations(
         self,
@@ -146,7 +161,7 @@ class CounterfactualGenerator:
         indices_with_missing_values: np.array,
         n: int,
         data_pd: pd.DataFrame,
-        method: str = "GS",
+        method: str = "DiCE",
     ) -> np.array:
         """Generate explanation for input vector(s).
 
@@ -176,7 +191,7 @@ class CounterfactualGenerator:
                     for imputed_input in imputed_inputs
                 ]
             )
-        elif method == "DICE":
+        elif method == "DiCE":
             explanations = None
             for imputed_input in imputed_inputs:
                 if explanations is None:
@@ -191,7 +206,7 @@ class CounterfactualGenerator:
                         )
                     )
         else:
-            raise NotImplementedError("Only methods GS and DICE are implemented!")
+            raise NotImplementedError("Only methods GS and DiCE are implemented!")
         if self.debug:
             print(f"Explanations: {explanations}")
         valid_explanations = self._filter_out_non_valid(explanations)

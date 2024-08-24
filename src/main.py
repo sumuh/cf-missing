@@ -70,7 +70,7 @@ def main():
         )
 
     evaluation_config = {
-        config_classifier: config_logistic_regression,
+        config_classifier: config_sklearn,
         config_missing_data_mechanism: config_MCAR,
         config_debug: DEBUG,
         config_number_of_missing_values: 3,  # only used if MCAR
