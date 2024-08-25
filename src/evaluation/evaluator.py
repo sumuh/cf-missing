@@ -153,35 +153,30 @@ class CounterfactualEvaluator:
         """
         n_cfs = len(counterfactuals)
         if n_cfs > 0:
-            unique_cfs = np.unique(counterfactuals, axis=0)
-            n_unique_cfs = unique_cfs.shape[0]
-
-            # Calculate metrics for unique counterfactuals
             valid_ratio = get_valid_ratio(
-                unique_cfs, prediction_func, self.data_config.target_class
+                counterfactuals, prediction_func, self.data_config.target_class
             )
             mads = get_feature_mads(self.X_train_current)
             avg_dist_from_original = get_average_distance_from_original(
-                self.test_instance_complete_current, unique_cfs, mads
+                self.test_instance_complete_current, counterfactuals, mads
             )
-            diversity = get_diversity(unique_cfs, mads)
-            count_diversity = get_count_diversity(unique_cfs)
+            diversity = get_diversity(counterfactuals, mads)
+            count_diversity = get_count_diversity(counterfactuals)
             diversity_missing_values = get_diversity(
-                unique_cfs[:, self.indices_with_missing_values_current],
+                counterfactuals[:, self.indices_with_missing_values_current],
                 mads[self.indices_with_missing_values_current],
             )
             count_diversity_missing_values = get_count_diversity(
-                unique_cfs[:, self.indices_with_missing_values_current]
+                counterfactuals[:, self.indices_with_missing_values_current]
             )
             # Calculate sparsity from imputed test instance
             avg_sparsity = get_average_sparsity(
-                self.test_instance_complete_current, unique_cfs
+                self.test_instance_complete_current, counterfactuals
             )
 
         return {
             "n_vectors": n_cfs,
             "no_cf_found": n_cfs == 0,
-            "n_unique_vectors": n_unique_cfs,
             "valid_ratio": valid_ratio,
             "avg_dist_from_original": avg_dist_from_original,
             "diversity": diversity,

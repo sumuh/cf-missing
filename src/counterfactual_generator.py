@@ -141,6 +141,14 @@ class CounterfactualGenerator:
             return counterfactuals[
                 counterfactuals[:, -1] >= self.classifier.get_threshold()
             ]
+        
+    def _filter_out_duplicates(self, counterfactuals: np.array) -> np.array:
+        """Returns unique counterfactuals.
+
+        :param np.array counterfactuals: counterfactuals
+        :return np.array: unique counterfactuals
+        """
+        return np.unique(counterfactuals, axis=0)
 
     def generate_explanations(
         self,
@@ -182,13 +190,16 @@ class CounterfactualGenerator:
                 )
 
         if self.debug:
-            print(f"Explanations: {explanations}")
+            print(f"All k*n explanations:")
+            print(pd.DataFrame(explanations))
         valid_explanations = self._filter_out_non_valid(explanations)
-        if len(valid_explanations) == 0:
+        valid_unique_explanations = self._filter_out_duplicates(valid_explanations)
+        if len(valid_unique_explanations) == 0:
             return np.array([])
         final_explanations = self._perform_final_selection(
-            valid_explanations[:, :-1], input, k, mads
+            valid_unique_explanations[:, :-1], input, k, mads
         )
         if self.debug:
-            print(f"Final selections: {final_explanations}")
+            print(f"Final k selections:")
+            print(pd.DataFrame(final_explanations))
         return final_explanations

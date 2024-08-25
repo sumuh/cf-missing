@@ -44,7 +44,7 @@ evaluation:
     counterfactuals_to_return: 3
 
   debug:
-    True
+    False
 
   save_results:
     True
@@ -54,7 +54,6 @@ evaluation:
 
   numeric_metrics:
     - n_vectors
-    - n_unique_vectors
     - valid_ratio
     - avg_dist_from_original
     - diversity
