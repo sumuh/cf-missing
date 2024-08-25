@@ -19,19 +19,22 @@ class ClassifierSklearn:
         self.pipeline = self.init_pipeline(num_predictor_indices)
         self.threshold = threshold
 
-    def init_pipeline(self, num_predictor_indices: np.array) -> Pipeline:
+    def init_pipeline(self, predictor_indices: np.array) -> Pipeline:
         """Build pipeline for logistic regression.
 
-        :param np.array num_predictor_indices: indices of numeric predictors in training data
+        :param np.array predictor_indices: indices of predictors in training data
         :return Pipeline: Pipeline with scaler and logistic regression model
         """
         num_pipeline = Pipeline(steps=[("scale", MinMaxScaler())])
         col_trans = ColumnTransformer(
-            transformers=[("num_pipeline", num_pipeline, num_predictor_indices)],
+            transformers=[("num_pipeline", num_pipeline, predictor_indices)],
             remainder="drop",
         )
         return Pipeline(
-            steps=[("col_trans", col_trans), ("model", LogisticRegression())]
+            steps=[
+                ("col_trans", col_trans),
+                ("model", LogisticRegression(class_weight="balanced")),
+            ]
         )
 
     def train(self, X_train: np.array, y_train: np.array):
@@ -52,7 +55,7 @@ class ClassifierSklearn:
         return prediction[0]
 
     def predict_with_proba(self, input: np.array) -> tuple[int, float]:
-        """Get classification (0/1) for new instance from trained model.
+        """Get classification (0/1) and probability of 1 for a new instance from trained model.
 
         :param np.array input: 1D input array to predict
         :return tuple[int, float]: tuple with predicted class and probability that predicted class was 1

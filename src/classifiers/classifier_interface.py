@@ -3,7 +3,6 @@ import pandas as pd
 
 from .classifier_sklearn import ClassifierSklearn
 from .classifier_tensorflow import ClassifierTensorFlow
-from ..constants import config_sklearn, config_tensorflow
 
 
 class Classifier:
@@ -12,13 +11,13 @@ class Classifier:
     def __init__(
         self,
         implementation: str,
-        num_predictor_indices: list[int],
+        predictor_indices: list[int],
         threshold: float = 0.5,
     ):
-        if implementation == config_sklearn:
-            self.classifier = ClassifierSklearn(num_predictor_indices, threshold)
-        elif implementation == config_tensorflow:
-            self.classifier = ClassifierTensorFlow(num_predictor_indices, threshold)
+        if implementation == "sklearn":
+            self.classifier = ClassifierSklearn(predictor_indices, threshold)
+        elif implementation == "tensorflow":
+            self.classifier = ClassifierTensorFlow(predictor_indices)
         else:
             raise RuntimeError(
                 f"Classifier implementation must be one of [sklearn, tensorflow]; was {implementation}"
@@ -46,10 +45,10 @@ class Classifier:
         :param np.array input: 1D input array to predict
         :return int: predicted class
         """
-        return self.classifier.predict_with_proba(input)[0]
+        return self.classifier.predict(input)
 
     def predict_with_proba(self, input: np.array) -> tuple[int, float]:
-        """Get classification (0/1) for new instance from trained model.
+        """Get classification (0/1) and probability of 1 for a new instance from trained model.
 
         :param np.array input: 1D input array to predict
         :return tuple[int, float]: tuple with predicted class and probability that predicted class was 1

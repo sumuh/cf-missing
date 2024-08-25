@@ -7,7 +7,6 @@ from itertools import combinations
 from .classifiers.classifier_interface import Classifier
 from .classifiers.classifier_sklearn import ClassifierSklearn
 from .classifiers.classifier_tensorflow import ClassifierTensorFlow
-from .libraries.growingspheres import growingspheres as gs
 from .imputer import Imputer
 from .evaluation.evaluation_metrics import get_distance, get_diversity
 from .data_utils import get_feature_mads
@@ -34,13 +33,14 @@ class CounterfactualGenerator:
         sys.stderr = sys.__stderr__
 
     def _get_dice_counterfactuals(
-        self, input: np.array, data: pd.DataFrame
+        self, input: np.array, data: pd.DataFrame, k: int
     ) -> np.array:
-        """Returns a counterfactual generated with the DiCE library.
+        """Returns counterfactuals generated with the DiCE library.
 
         :param np.array input: input array
         :param pd.DataFrame data: dataset
-        :return np.array: generated counterfactual
+        :param int k: number of counterfactuals to generate
+        :return np.array: generated counterfactuals
         """
         if self.debug:
             print("Getting DiCE counterfactuals")
@@ -66,34 +66,15 @@ class CounterfactualGenerator:
                 f"Expected one of [ClassifierSklearn, ClassifierTensorFlow], got {self.classifier}"
             )
         # Suppress some sklearn(?) progress bar that is being output to stderr for some reason
-        # self.block_stderr()
+        self.block_stderr()
         e1 = exp.generate_counterfactuals(
             pd.DataFrame(input.reshape(-1, len(input)), columns=predictor_col_names),
-            total_CFs=3,
+            total_CFs=k,
             desired_class=self.target_class,
             verbose=False,
         )
-        # explanations = e1.cf_examples_list[0].final_cfs_df
+        self.enable_stderr()
         return e1.cf_examples_list[0].final_cfs_df.to_numpy()
-
-    def _get_growing_spheres_counterfactual(self, input: np.array) -> np.array:
-        """Returns diverse counterfactuals generated with the DiCe library.
-
-        :param np.array input: input array
-        :return np.array: generated counterfactuals
-        """
-        gs_model = gs.GrowingSpheres(
-            obs_to_interprete=np.array([input]),
-            prediction_fn=self.classifier.predict,
-            target_class=self.target_class,
-            caps=None,
-            n_in_layer=1000,
-            first_radius=0.1,
-            dicrease_radius=3.0,  # TODO: hyperparam estimation
-            layer_shape="sphere",
-            verbose=False,
-        )
-        return gs_model.find_counterfactual()
 
     def _selection_loss_function(
         self,
@@ -147,74 +128,66 @@ class CounterfactualGenerator:
         return best_set
 
     def _filter_out_non_valid(self, counterfactuals: np.array) -> np.array:
-        """Filter out counterfactuals that are not valid.
+        """Filter out counterfactuals that are not valid (they don't belong to the target class).
 
         :param np.array counterfactuals: counterfactuals
         :return np.array: valid counterfactuals
         """
-        return counterfactuals[counterfactuals[:, -1] < self.classifier.get_threshold()]
+        if self.target_class == 0:
+            return counterfactuals[
+                counterfactuals[:, -1] < self.classifier.get_threshold()
+            ]
+        elif self.target_class == 1:
+            return counterfactuals[
+                counterfactuals[:, -1] >= self.classifier.get_threshold()
+            ]
 
     def generate_explanations(
         self,
         input: np.array,
         X_train: np.array,
         indices_with_missing_values: np.array,
+        k: int,
         n: int,
         data_pd: pd.DataFrame,
-        method: str = "DiCE",
     ) -> np.array:
         """Generate explanation for input vector(s).
 
         :param np.array input: input array
         :param np.array X_train: train data
         :param np.array indices_with_missing_values: indices of columns missing values
-        :param int n: number of explanations to generate
+        :param int k: number of explanations to generate
+        :param int n: number of imputed vectors to create in multiple imputation
         :param str method: counterfactual generation method
         :return np.array: array with n rows
         """
-        n = 4
         imputer = Imputer(X_train, True, self.debug)
         mads = get_feature_mads(X_train)
-        if self.debug:
-            print(f"Input: {input}")
-            print(f"Indices with missing values: {indices_with_missing_values}")
         imputed_inputs = imputer.multiple_imputation(
             input, indices_with_missing_values, n
         )
         if self.debug:
             print("Multiply imputed inputs:")
             print(imputed_inputs)
-        if method == "GS":
-            explanations = np.array(
-                [
-                    self._get_growing_spheres_counterfactual(imputed_input)
-                    for imputed_input in imputed_inputs
-                ]
-            )
-        elif method == "DiCE":
-            explanations = None
-            for imputed_input in imputed_inputs:
-                if explanations is None:
-                    explanations = self._get_dice_counterfactuals(
-                        imputed_input, data_pd
+        explanations = None
+        for imputed_input in imputed_inputs:
+            if explanations is None:
+                explanations = self._get_dice_counterfactuals(imputed_input, data_pd, k)
+            else:
+                explanations = np.vstack(
+                    (
+                        explanations,
+                        self._get_dice_counterfactuals(imputed_input, data_pd, k),
                     )
-                else:
-                    explanations = np.vstack(
-                        (
-                            explanations,
-                            self._get_dice_counterfactuals(imputed_input, data_pd),
-                        )
-                    )
-        else:
-            raise NotImplementedError("Only methods GS and DiCE are implemented!")
+                )
+
         if self.debug:
             print(f"Explanations: {explanations}")
         valid_explanations = self._filter_out_non_valid(explanations)
         if len(valid_explanations) == 0:
             return np.array([])
-        final_set_size = 3
         final_explanations = self._perform_final_selection(
-            valid_explanations[:, :-1], input, final_set_size, mads
+            valid_explanations[:, :-1], input, k, mads
         )
         if self.debug:
             print(f"Final selections: {final_explanations}")

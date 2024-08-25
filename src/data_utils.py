@@ -3,40 +3,25 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 from collections import defaultdict
-from .constants import *
 
 
-def get_wine_dataset_config() -> dict:
-    """Return details of wine dataset.
+class Config:
+    """Config object for accessing config with dot notation."""
 
-    :return dict: config dictionary
-    """
-    return {
-        config_dataset_name: "WineQuality red",
-        config_file_path: "winequality/winequality-red.csv",
-        config_target_name: "quality",
-        config_target_class: 1,
-        config_multiclass_target: True,
-        config_missing_values: False,
-        config_multiclass_threshold: 5,
-        config_separator: ";",
-    }
+    def __init__(self, config_dict):
+        for key, value in config_dict.items():
+            if isinstance(value, dict):
+                value = Config(value)
+            setattr(self, key, value)
 
-
-def get_diabetes_dataset_config() -> dict:
-    """Return details of diabetes dataset.
-
-    :return dict: config dictionary
-    """
-    return {
-        config_dataset_name: "Pima Indians Diabetes",
-        config_file_path: "diabetes.csv",
-        config_target_name: "Outcome",
-        config_target_class: 0,
-        config_multiclass_target: False,
-        config_missing_values: True,
-        config_separator: ",",
-    }
+    def get_dict(self):
+        result = {}
+        for key, value in self.__dict__.items():
+            if isinstance(value, Config):
+                result[key] = value.get_dict()
+            else:
+                result[key] = value
+        return result
 
 
 def load_data(relative_path: str, separator: str) -> pd.DataFrame:
@@ -62,8 +47,40 @@ def transform_target_to_binary_class(
     :param int threshold: cutoff point
     :return pd.DataFrame: data with target column replaced
     """
-    data[target_name] = np.where(data[target_name] <= threshold, 0, 1)
+    data[target_name] = np.where(data[target_name] < threshold, 0, 1)
     return data
+
+
+def drop_rows_with_missing_values(data: pd.DataFrame) -> pd.DataFrame:
+    """Drops rows where any of the specified features
+    has value zero (assuming Diabetes dataset).
+
+    :param pd.DataFrame data: diabetes dataset
+    :return pd.DataFrame: dataset with no missing values
+    """
+    data = data[
+        (data.Glucose != 0)
+        & (data.BloodPressure != 0)
+        & (data.SkinThickness != 0)
+        & (data.Insulin != 0)
+        & (data.BMI != 0)
+    ]
+    return data
+
+
+def get_X_y(
+    data: np.array, predictor_indices: list[int], target_index: int
+) -> tuple[np.array, np.array]:
+    """Get X train and y train.
+
+    :param np.array data: data
+    :param list[int]: indices of predictor variables
+    :param int: index of target variable
+    :return tuple[np.array, np.array]: X_train, y_train
+    """
+    X_train = data[:, predictor_indices]
+    y_train = data[:, target_index].ravel()
+    return X_train, y_train
 
 
 def show_correlation_matrix(data: pd.DataFrame):
@@ -90,6 +107,23 @@ def show_correlation_matrix(data: pd.DataFrame):
     plt.show()
 
 
+def get_data_metrics(data: pd.DataFrame, target_name: str) -> dict[str, int]:
+    """Obtain metrics from dataset.
+
+    :param pd.DataFrame data: dataset
+    :param str target_name: name of target variable
+    :return dict[str, int]: metrics
+    """
+    total_rows = len(data)
+    label_0 = len(data[data[target_name] == 0])
+    label_1 = len(data[data[target_name] == 1])
+    return {
+        "total_rows": total_rows,
+        "label_0": label_0,
+        "label_1": label_1,
+    }
+
+
 def explore_data(data: pd.DataFrame):
     """Print auto-generated summaries and plots for dataframe.
 
@@ -109,51 +143,21 @@ def explore_data(data: pd.DataFrame):
     print(f"{symbol*42}")
 
 
-def get_target_index(data: pd.DataFrame, target_name: str) -> int:
-    """Return index of target variable based on name.
+def get_feature_min_values(data: np.array) -> np.array:
+    """For each column in data returns mininum value.
 
-    :param pd.DataFrame data: dataset
-    :param str target_name: target feature name
-    :return int: target feature index
+    :param np.array data: data
+    :return np.array: array of min values
     """
-    return data.columns.get_loc(target_name)
-
-
-def get_cat_indices(data: pd.DataFrame, target_index: int) -> np.array:
-    """Returns indices of categorical predictors.
-
-    :param pd.DataFrame data: dataset
-    :param int: target feature index
-    :return np.array: indices of categorical predictors
-    """
-    predictors = data.drop(data.columns[target_index], axis=1)
-    cat_predictor_names = predictors.select_dtypes(include=["object"]).columns
-    return np.array(
-        [data.columns.get_loc(predictor_name) for predictor_name in cat_predictor_names]
-    )
-
-
-def get_num_indices(data: pd.DataFrame, target_index: int) -> np.array:
-    """Returns indices of numeric predictors.
-
-    :param pd.DataFrame data: dataset
-    :param int: target feature index
-    :return np.array: indices of numeric predictors
-    """
-    predictors = data.drop(data.columns[target_index], axis=1)
-    num_predictor_names = predictors.select_dtypes(
-        include=["int", "float"]
-    ).columns.to_list()
-    return np.array(
-        [data.columns.get_loc(predictor_name) for predictor_name in num_predictor_names]
-    )
-
-
-def get_feature_min_values(data: np.array) -> float:
     return np.min(data, axis=0)
 
 
-def get_feature_max_values(data: np.array) -> float:
+def get_feature_max_values(data: np.array) -> np.array:
+    """For each column in data returns maximum value.
+
+    :param np.array data: data
+    :return np.array: array of max values
+    """
     return np.max(data, axis=0)
 
 
@@ -220,13 +224,24 @@ def get_counts_of_values_in_arrays(list_of_arrs: list[np.array]) -> dict[str, in
     return dict(count_dict)
 
 
+def save_data_histogram(data: pd.DataFrame, file_path: str = None):
+    """Plots histograms of each feature in data and saves image to given path.
+
+    :param pd.DataFrame data: dataframe
+    :param str file_path: file path for saving image, defaults to None
+    """
+    data.hist(grid=False, figsize=(19, 15))
+    plt.savefig(file_path)
+
+
 def plot_metric_histograms(
-    metrics: dict[str, np.array], save_to_file: bool, file_path: str = None
+    metrics: dict[str, np.array], save_to_file: bool, show: bool, file_path: str = None
 ):
     """Plots histograms of each metric and saves image to given path if save_to_file is True.
 
     :param dict[str, np.array] metrics: dict of metrics
     :param bool save_to_file: whether to save image
+    :param bool show: whether to show image
     :param str file_path: file path for saving image, defaults to None
     """
     fig, axes = plt.subplots(2, 4, figsize=(19, 15))
@@ -242,38 +257,18 @@ def plot_metric_histograms(
     plt.tight_layout()
     if save_to_file:
         plt.savefig(file_path)
-    plt.show()
+    if show:
+        plt.show()
 
 
-def get_test_input_1() -> dict:
-    """Test input for which we expect classification outcome=0.
+def get_str_from_dict_for_saving(dict_to_save: dict, dict_name: str) -> str:
+    """Utility method for generating string based on dictionary.
 
-    :return dict: test input dict
+    :param dict dict_to_save: dictionary to stringify
+    :param str dict_name: name of dictionary
+    :return str: string representation of dict name and contents
     """
-    return {
-        "Pregnancies": 2,
-        "Glucose": 50,
-        "BloodPressure": 50,
-        "SkinThickness": 20,
-        "Insulin": 0,
-        "BMI": 23,
-        "DiabetesPedigreeFunction": 0.356,
-        "Age": 34,
-    }
-
-
-def get_test_input_2() -> dict:
-    """Test input for which we expect classification outcome=1.
-
-    :return dict: test input dict
-    """
-    return {
-        "Pregnancies": 6,
-        "Glucose": 150,
-        "BloodPressure": 70,
-        "SkinThickness": 30,
-        "Insulin": 140,
-        "BMI": 29,
-        "DiabetesPedigreeFunction": 0.90,
-        "Age": 50,
-    }
+    s = "-"
+    title = f"{s*12} {dict_name} {s*12}\n"
+    content = "\n".join([f"{item[0]}\t{item[1]}" for item in dict_to_save.items()])
+    return title + content

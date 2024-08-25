@@ -1,0 +1,79 @@
+data:
+  wine_red:
+    dataset_name: WineQuality red
+    file_path: winequality/winequality-red.csv
+    target_name: quality
+    target_index: 11
+    target_class: 1
+    multiclass_target: True
+    predictor_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    multiclass_threshold: 6
+    separator: ";"
+
+  wine_white:
+    dataset_name: WineQuality white
+    file_path: winequality/winequality-white.csv
+    target_name: quality
+    target_index: 11
+    target_class: 1
+    multiclass_target: True
+    predictor_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    multiclass_threshold: 6
+    separator: ";"
+
+  diabetes:
+    dataset_name: Pima Indians Diabetes
+    file_path: diabetes.csv
+    target_name: Outcome
+    target_class: 0
+    multiclass_target: False
+    separator: ","
+
+evaluation:
+  classifier:
+    sklearn # Possible values: sklearn, tensorflow
+
+  missing_data:
+    mechanism: MCAR # Possible values: MCAR, MAR, MNAR
+    number_of_missing: 3
+
+  multiple_imputation:
+    imputations_to_create: 10
+
+  counterfactuals:
+    counterfactuals_to_return: 3
+
+  debug:
+    True
+
+  save_results:
+    True
+
+  show_plots:
+    False
+
+  numeric_metrics:
+    - n_vectors
+    - n_unique_vectors
+    - valid_ratio
+    - avg_dist_from_original
+    - diversity
+    - count_diversity
+    - diversity_missing_values
+    - count_diversity_missing_values
+    - avg_sparsity
+    - runtime_seconds
+    - num_missing_values
+    
+  boolean_metrics:
+    - undesired_class
+    - no_cf_found
+
+  metrics_for_histograms:
+    - avg_dist_from_original
+    - diversity
+    - count_diversity
+    - diversity_missing_values
+    - count_diversity_missing_values
+    - avg_sparsity
+    - runtime_seconds
