@@ -39,18 +39,21 @@ def load_config(config_file_path: str) -> dict:
         return yaml.load(f, Loader=yaml.FullLoader)
 
 
-def main():
-    print("Running evaluation...")
-    current_file_path = os.path.dirname(os.path.realpath(__file__))
-    config_all = Config(load_config(f"{current_file_path}/../config/config.yaml"))
-    data_config = Config(config_all.data.wine_white.get_dict())
-    evaluation_config = Config(config_all.evaluation.get_dict())
+def run_evaluation_with_config(
+    results_main_dir: str,
+    file_prefix: str,
+    data_config: Config,
+    evaluation_config: Config,
+):
+    """Runs evaluation for config settings and writes results to file if so specified.
 
+    :param str results_main_dir: directory for results
+    :param str file_prefix: prefix for results file that contains info of important run parameters
+    :param Config data_config: data configuration
+    :param Config evaluation_config: evaluation configuration
+    """
     # Choose and load dataset to use
     data = load_data(data_config.file_path, data_config.separator)
-
-    # TEMP: for testing
-    data = data[:300]
 
     # For now multiclass classification is not supported so convert to binary class if needed
     if data_config.multiclass_target:
@@ -61,7 +64,7 @@ def main():
         )
 
     if data_config.dataset_name == "Pima Indians Diabetes":
-        drop_rows_with_missing_values()
+        data = drop_rows_with_missing_values(data)
 
     if evaluation_config.show_plots:
         explore_data(data)
@@ -81,17 +84,14 @@ def main():
     print(f"counterfactual metrics\n{json.dumps(aggregated_results, indent=2)}")
 
     if evaluation_config.save_results:
-        current_time = datetime.now()
-        formatted_time_day = current_time.strftime("%d-%m-%Y")
-        formatted_time_sec = current_time.strftime("%d-%m-%Y-%H-%M-%S")
-        results_dir = f"{current_file_path}/../evaluation_results/{formatted_time_day}/{formatted_time_sec}"
         # Create new dir for each test
-        Path(results_dir).mkdir(parents=True, exist_ok=True)
-        results_filename = f"{results_dir}/results-{formatted_time_sec}.txt"
+        results_dir = f"{results_main_dir}/{file_prefix}"
+        Path(results_dir).mkdir(parents=True)
+        results_filename = f"{results_dir}/{file_prefix}.txt"
 
     if evaluation_config.save_results:
-        metrics_histogram_file = f"{results_dir}/results-hist-{formatted_time_sec}.png"
-        data_histogram_file = f"{results_dir}/data-hist-{formatted_time_sec}.png"
+        metrics_histogram_file = f"{results_dir}/{file_prefix}-results-hist.png"
+        data_histogram_file = f"{results_dir}/{file_prefix}-data-hist.png"
         plot_metric_histograms(
             histogram_dict,
             save_to_file=True,
@@ -128,6 +128,44 @@ def main():
                 counterfactual_metrics_str,
             ]
             results_file.write("\n\n".join(all_to_write))
+
+
+def main():
+    print("Running evaluation...")
+    current_file_path = os.path.dirname(os.path.realpath(__file__))
+    config_all = Config(load_config(f"{current_file_path}/../config/config.yaml"))
+    data_config = Config(config_all.data.diabetes.get_dict())
+    evaluation_config = Config(config_all.evaluation.get_dict())
+
+    RUN_EVALUATION_LOOP = True
+
+    current_time = datetime.now()
+    formatted_time_day = current_time.strftime("%d-%m-%Y")
+    formatted_time_sec = current_time.strftime("%d-%m-%Y-%H-%M-%S")
+    results_dir = f"{current_file_path}/../evaluation_results/{formatted_time_day}/run_{formatted_time_sec}"
+
+    if RUN_EVALUATION_LOOP:
+        # Override config file options with looping different values
+        num_missing_values_to_test = [2, 3]
+        imputation_types_to_test = ["multiple", "mean"]
+        for n in num_missing_values_to_test:
+            evaluation_config.missing_data.number_of_missing = n
+            for t in imputation_types_to_test:
+                evaluation_config.imputation.type = t
+                file_prefix = f"{n}_missing_{t}"
+                print(
+                    f"Running evaluation for {n} missing values, imputation type: {t}"
+                )
+                run_evaluation_with_config(
+                    results_dir, file_prefix, data_config, evaluation_config
+                )
+
+    else:
+        # Use params from config file
+        file_prefix = f"test_run"
+        run_evaluation_with_config(
+            results_dir, file_prefix, data_config, evaluation_config
+        )
 
 
 if __name__ == "__main__":

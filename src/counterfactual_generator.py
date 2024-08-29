@@ -8,7 +8,12 @@ from .classifiers.classifier_interface import Classifier
 from .classifiers.classifier_sklearn import ClassifierSklearn
 from .classifiers.classifier_tensorflow import ClassifierTensorFlow
 from .imputer import Imputer
-from .evaluation.evaluation_metrics import get_distance, get_diversity
+from .evaluation.evaluation_metrics import (
+    get_distance,
+    get_diversity,
+    get_average_sparsity,
+    get_sparsity,
+)
 from .data_utils import get_feature_mads
 
 
@@ -71,6 +76,10 @@ class CounterfactualGenerator:
             pd.DataFrame(input.reshape(-1, len(input)), columns=predictor_col_names),
             total_CFs=k,
             desired_class=self.target_class,
+            # proximity_weight=0.1,
+            # diversity_weight=0.1,
+            # sparsity_weight=10,
+            # posthoc_sparsity_param=0.1,
             verbose=False,
         )
         self.enable_stderr()
@@ -83,6 +92,7 @@ class CounterfactualGenerator:
         mads: np.array,
         lambda_1: float = 0.5,
         lambda_2: float = 1,
+        lambda_3: float = 1.5,
     ) -> float:
         """Loss function modified from Mothilal et al. (2020)
         for selecting best set of counterfactuals.
@@ -92,13 +102,19 @@ class CounterfactualGenerator:
         :param np.array mads: mean absolute deviationd for each predictor
         :param float lambda_1: hyperparam, defaults to 0.5
         :param float lambda_2: hyperparam, defaults to 1
+        :param float lambda_3: hyperparam, defaults to 1.5
         :return float: value of loss function
         """
         dist_sum = 0
         for cf in candidate_counterfactuals:
             dist_sum += get_distance(cf, input, mads)
         div = get_diversity(candidate_counterfactuals, mads)
-        return lambda_1 / len(candidate_counterfactuals) * dist_sum - lambda_2 * div
+        sparsity = get_average_sparsity(input, candidate_counterfactuals)
+        return (
+            (lambda_1 / len(candidate_counterfactuals) * dist_sum)
+            - (lambda_2 * div)
+            + (lambda_3 * sparsity)
+        )
 
     def _perform_final_selection(
         self,
@@ -141,7 +157,7 @@ class CounterfactualGenerator:
             return counterfactuals[
                 counterfactuals[:, -1] >= self.classifier.get_threshold()
             ]
-        
+
     def _filter_out_duplicates(self, counterfactuals: np.array) -> np.array:
         """Returns unique counterfactuals.
 
@@ -150,33 +166,56 @@ class CounterfactualGenerator:
         """
         return np.unique(counterfactuals, axis=0)
 
-    def generate_explanations(
+    def _perform_imputation(
         self,
+        imputer: Imputer,
+        imputation_type: str,
         input: np.array,
-        X_train: np.array,
         indices_with_missing_values: np.array,
-        k: int,
         n: int,
-        data_pd: pd.DataFrame,
     ) -> np.array:
-        """Generate explanation for input vector(s).
+        """Imputes missing values with specified imputation method.
 
-        :param np.array input: input array
-        :param np.array X_train: train data
-        :param np.array indices_with_missing_values: indices of columns missing values
-        :param int k: number of explanations to generate
-        :param int n: number of imputed vectors to create in multiple imputation
-        :param str method: counterfactual generation method
-        :return np.array: array with n rows
+        :param Imputer imputer: Imputer instance
+        :param str imputation_type: imputation type e.g. mean, multiple
+        :param np.array input: input to impute
+        :param np.array indices_with_missing_values: indices that have missing values in input
+        :param int n: how many imputations to create if imputation_type is 'multiple' 
+        :raises RuntimeError: raised if unknown imputation_type 
+        :return np.array: 1D or 2D array of imputed versions of input
         """
-        imputer = Imputer(X_train, True, self.debug)
-        mads = get_feature_mads(X_train)
-        imputed_inputs = imputer.multiple_imputation(
-            input, indices_with_missing_values, n
-        )
-        if self.debug:
-            print("Multiply imputed inputs:")
-            print(imputed_inputs)
+        if imputation_type == "multiple":
+            imputed = imputer.multiple_imputation(input, indices_with_missing_values, n)
+        elif imputation_type == "mean":
+            imputed = imputer.mean_imputation(input, indices_with_missing_values)
+        else:
+            raise RuntimeError(
+                f"Unexpected imputation type '{imputation_type}', expected one of: ['multiple', 'mean']"
+            )
+        return imputed
+
+    def _get_explanations_for_single_input(
+        self, imputed_input: np.array, data_pd: pd.DataFrame, k: int
+    ) -> np.array:
+        """Returns counterfactual explanations given a single input.
+
+        :param np.array imputed_input: input
+        :param pd.DataFrame data_pd: data
+        :param int k: how many counterfactuals to generate
+        :return np.array: counterfactual array of size k 
+        """
+        return self._get_dice_counterfactuals(imputed_input, data_pd, k)
+
+    def _get_explanations_for_multiple_inputs(
+        self, imputed_inputs: np.array, data_pd: pd.DataFrame, k: int
+    ) -> np.array:
+        """Returns counterfactual explanations for each input.
+
+        :param np.array imputed_inputs: inputs
+        :param pd.DataFrame data_pd: data
+        :param int k: how many counterfactuals to generate per input
+        :return np.array: counterfactual array of size k * len(imputed_inputs)
+        """
         explanations = None
         for imputed_input in imputed_inputs:
             if explanations is None:
@@ -188,10 +227,65 @@ class CounterfactualGenerator:
                         self._get_dice_counterfactuals(imputed_input, data_pd, k),
                     )
                 )
+        return explanations
+
+    def generate_explanations(
+        self,
+        input: np.array,
+        X_train: np.array,
+        indices_with_missing_values: np.array,
+        k: int,
+        n: int,
+        data_pd: pd.DataFrame,
+        imputation_type: str,
+    ) -> np.array:
+        """Generate explanation for input vector(s).
+
+        :param np.array input: input array
+        :param np.array X_train: train data
+        :param np.array indices_with_missing_values: indices of columns missing values
+        :param int k: number of explanations to generate
+        :param int n: number of imputed vectors to create in multiple imputation
+        :param pd.DataFrame data_pd: data
+        :param str method: counterfactual generation method
+        :return np.array: array with n rows
+        """
+        imputer = Imputer(X_train, True, self.debug)
+        mads = get_feature_mads(X_train)
+        if len(indices_with_missing_values) > 0:
+            # Evaluate input with missing values
+            input_for_explanations = self._perform_imputation(
+                imputer, imputation_type, input, indices_with_missing_values, n
+            )
+        else:
+            # Evaluate complete input
+            input_for_explanations = input.copy()
+
+        if self.debug:
+            print("input_for_explanations:")
+            print(input_for_explanations)
+
+        if input_for_explanations.ndim == 1:
+            # Simple imputation was performed OR no missing values in input
+            explanations = self._get_explanations_for_single_input(
+                input_for_explanations, data_pd, k * n
+            )
+        else:
+            # Multiple imputation was performed
+            explanations = self._get_explanations_for_multiple_inputs(
+                input_for_explanations, data_pd, k
+            )
 
         if self.debug:
             print(f"All k*n explanations:")
-            print(pd.DataFrame(explanations))
+            df = pd.DataFrame(explanations)
+            df.loc[-1] = pd.Series(input)
+            df.index = df.index + 1
+            df.sort_index(inplace=True)
+            df["sparsities"] = df.apply(
+                lambda row: get_sparsity(row[:-1].to_numpy(), input), axis=1
+            )
+            print(df)
         valid_explanations = self._filter_out_non_valid(explanations)
         valid_unique_explanations = self._filter_out_duplicates(valid_explanations)
         if len(valid_unique_explanations) == 0:

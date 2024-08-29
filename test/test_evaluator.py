@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 from src.evaluation.evaluation_metrics import (
-    _calculate_l0_norm,
+    get_sparsity,
     get_distance,
     get_diversity,
     get_average_distance_from_original,
@@ -14,35 +14,35 @@ from src.evaluation.evaluation_metrics import (
 def test_when_vectors_are_equal_then_l0_norm_is_zero():
     vector_1 = np.array([1, 1, 1, 1])
     vector_2 = np.array([1, 1, 1, 1])
-    l0_norm = _calculate_l0_norm(vector_1, vector_2)
+    l0_norm = get_sparsity(vector_1, vector_2)
     assert l0_norm == 0
 
 
 def test_when_vectors_have_one_different_feature_then_l0_norm_is_one():
     vector_1 = np.array([1, 1, 1, 1])
     vector_2 = np.array([2, 1, 1, 1])
-    l0_norm = _calculate_l0_norm(vector_1, vector_2)
+    l0_norm = get_sparsity(vector_1, vector_2)
     assert l0_norm == 1
 
 
 def test_when_vectors_have_two_different_features_then_l0_norm_is_two():
     vector_1 = np.array([1, 1, 1, 1])
     vector_2 = np.array([2, 2, 1, 1])
-    l0_norm = _calculate_l0_norm(vector_1, vector_2)
+    l0_norm = get_sparsity(vector_1, vector_2)
     assert l0_norm == 2
 
 
 def test_when_vectors_have_one_different_feature_and_difference_is_more_than_one_then_l0_norm_is_one():
     vector_1 = np.array([1, 1, 1, 1])
     vector_2 = np.array([3, 1, 1, 1])
-    l0_norm = _calculate_l0_norm(vector_1, vector_2)
+    l0_norm = get_sparsity(vector_1, vector_2)
     assert l0_norm == 1
 
 
 def test_when_vectors_are_equal_then_l0_norm_is_zero():
     vector_1 = np.array([1, 1, 1, 1])
     vector_2 = np.array([1, 1, 1, 1])
-    l0_norm = _calculate_l0_norm(vector_1, vector_2)
+    l0_norm = get_sparsity(vector_1, vector_2)
     assert l0_norm == 0
 
 

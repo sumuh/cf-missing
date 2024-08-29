@@ -3,7 +3,7 @@ import numpy as np
 from typing import Callable
 
 
-def _calculate_l0_norm(vector_1: np.array, vector_2: np.array) -> int:
+def get_sparsity(vector_1: np.array, vector_2: np.array) -> int:
     """Calculates l0 norm (sparsity). Tells
     how many features have different values between vectors.
     Counterfactuals should have low sparsity.
@@ -65,7 +65,7 @@ def get_average_sparsity(original_vector: np.array, cf_vectors: np.array) -> flo
     """
     num_features = cf_vectors.shape[1]
     sparsities = np.apply_along_axis(
-        _calculate_l0_norm, 1, cf_vectors, vector_2=original_vector
+        get_sparsity, 1, cf_vectors, vector_2=original_vector
     )
     return (1 / (len(cf_vectors) * num_features)) * np.sum(sparsities)
 
@@ -102,7 +102,7 @@ def get_count_diversity(cf_vectors: np.array) -> float:
     num_features = cf_vectors.shape[1]
     for i in range(len(cf_vectors)):
         for j in range(i + 1, len(cf_vectors)):
-            sum_norms += _calculate_l0_norm(cf_vectors[i, :], cf_vectors[j, :])
+            sum_norms += get_sparsity(cf_vectors[i, :], cf_vectors[j, :])
     return 1 / (len(cf_vectors) ** 2 * num_features) * sum_norms
 
 

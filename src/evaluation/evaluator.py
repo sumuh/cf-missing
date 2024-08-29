@@ -162,16 +162,21 @@ class CounterfactualEvaluator:
             )
             diversity = get_diversity(counterfactuals, mads)
             count_diversity = get_count_diversity(counterfactuals)
-            diversity_missing_values = get_diversity(
-                counterfactuals[:, self.indices_with_missing_values_current],
-                mads[self.indices_with_missing_values_current],
-            )
-            count_diversity_missing_values = get_count_diversity(
-                counterfactuals[:, self.indices_with_missing_values_current]
-            )
+            if len(self.indices_with_missing_values_current) > 0:
+                diversity_missing_values = get_diversity(
+                    counterfactuals[:, self.indices_with_missing_values_current],
+                    mads[self.indices_with_missing_values_current],
+                )
+                count_diversity_missing_values = get_count_diversity(
+                    counterfactuals[:, self.indices_with_missing_values_current]
+                )
+            else:
+                diversity_missing_values = 0
+                count_diversity_missing_values = 0
+
             # Calculate sparsity from imputed test instance
             avg_sparsity = get_average_sparsity(
-                self.test_instance_complete_current, counterfactuals
+                self.test_instance_imputed_current, counterfactuals
             )
 
         return {
@@ -242,13 +247,21 @@ class CounterfactualEvaluator:
         :return tuple[np.array, float]: set of alternative vectors and generation wall clock time
         """
         time_start = time.time()
+        if len(self.indices_with_missing_values_current) > 0:
+            # Evaluate input with missing values
+            input = self.test_instance_imputed_current
+        else:
+            # Evaluate complete input
+            input = self.test_instance_complete_current
+
         counterfactuals = self.cf_generator.generate_explanations(
-            self.test_instance_imputed_current,
+            input,
             self.X_train_current,
             self.indices_with_missing_values_current,
             self.evaluation_config.counterfactuals.counterfactuals_to_return,
-            self.evaluation_config.multiple_imputation.imputations_to_create,
+            self.evaluation_config.imputation.imputations_to_create,
             self.data_pd,
+            self.evaluation_config.imputation.type,
         )
         time_end = time.time()
         wall_time = time_end - time_start
@@ -261,15 +274,25 @@ class CounterfactualEvaluator:
         :param np.array counterfactuals: counterfactuals
         :return pd.DataFrame: example df
         """
-        example_df = np.vstack(
-            (
-                self.test_instance_complete_current,
-                self.test_instance_with_missing_values_current,
-                self.test_instance_imputed_current,
-                counterfactuals,
+        if len(self.indices_with_missing_values_current) > 0:
+            example_df = np.vstack(
+                (
+                    self.test_instance_complete_current,
+                    self.test_instance_with_missing_values_current,
+                    self.test_instance_imputed_current,
+                    counterfactuals,
+                )
             )
-        )
-        index = ["complete input", "input with missing", "imputed input"]
+            index = ["complete input", "input with missing", "imputed input"]
+        else:
+            example_df = np.vstack(
+                (
+                    self.test_instance_complete_current,
+                    counterfactuals,
+                )
+            )
+            index = ["complete input"]
+
         for _ in range(len(counterfactuals)):
             index.append("counterfactual")
         return pd.DataFrame(example_df, index=index)
@@ -282,50 +305,54 @@ class CounterfactualEvaluator:
         generates counterfactual and evaluates it.
 
         :param int row_ind: row index of test instance in test data
-        :return tuple[dict[str, float], pd.DataFrame]: metrics for evaluated instance 
+        :return tuple[dict[str, float], pd.DataFrame]: metrics for evaluated instance
         and dataframe comparing inputs with counterfactuals
         """
         self.test_instance_complete_current = self._get_test_instance(row_ind)
-        self.test_instance_with_missing_values_current = (
-            self._introduce_missing_values_to_test_instance()
+
+        data_without_test_instance = np.delete(self.data_np, row_ind, 0)
+        X_train, y_train = get_X_y(
+            data_without_test_instance,
+            self.data_config.predictor_indices,
+            self.data_config.target_index,
         )
-        self.indices_with_missing_values_current = get_indices_with_missing_values(
-            self.test_instance_with_missing_values_current
-        )
+        self.X_train_current = X_train
+        self.classifier.train(X_train, y_train)
 
         example_df = None
-        test_instance_metrics = {
-            "num_missing_values": len(self.indices_with_missing_values_current)
-        }
 
-        if len(self.indices_with_missing_values_current) > 0:
-            data_without_test_instance = np.delete(self.data_np, row_ind, 0)
-            X_train, y_train = get_X_y(
-                data_without_test_instance,
-                self.data_config.predictor_indices,
-                self.data_config.target_index,
+        test_instance_metrics = {}
+
+        if self.evaluation_config.missing_data.number_of_missing > 0:
+            # Evaluate input with missing values
+            self.test_instance_with_missing_values_current = (
+                self._introduce_missing_values_to_test_instance()
             )
-            self.X_train_current = X_train
-            self.classifier.train(X_train, y_train)
+            self.indices_with_missing_values_current = get_indices_with_missing_values(
+                self.test_instance_with_missing_values_current
+            )
             self.test_instance_imputed_current = self._impute_test_instance()
-            # Make prediction
             prediction = self.classifier.predict(self.test_instance_imputed_current)
+        else:
+            # Evaluate complete input
+            self.indices_with_missing_values_current = np.array([])
+            prediction = self.classifier.predict(self.test_instance_complete_current)
+
+        if prediction != self.data_config.target_class:
+            # Generate counterfactuals
+            counterfactuals, wall_time = self._get_counterfactuals()
+            test_instance_metrics.update({"runtime_seconds": wall_time})
+
+            example_df = self._get_example_df(counterfactuals)
+
+            # Evaluate generated counterfactuals vs. original vector
             test_instance_metrics.update(
-                {"undesired_class": prediction != self.data_config.target_class}
+                self._evaluate_counterfactuals(counterfactuals, self.classifier.predict)
             )
-            if prediction != self.data_config.target_class:
-                # Generate counterfactuals
-                counterfactuals, wall_time = self._get_counterfactuals()
-                test_instance_metrics.update({"runtime_seconds": wall_time})
 
-                example_df = self._get_example_df(counterfactuals)
-
-                # Evaluate generated counterfactuals vs. original vector
-                test_instance_metrics.update(
-                    self._evaluate_counterfactuals(
-                        counterfactuals, self.classifier.predict
-                    )
-                )
+        test_instance_metrics.update(
+            {"num_missing_values": len(self.indices_with_missing_values_current)}
+        )
 
         return (test_instance_metrics, example_df)
 
@@ -336,13 +363,18 @@ class CounterfactualEvaluator:
         :return dict: aggregated metrics; averages for numeric fields and total of true values for boolean fields
         """
         numeric_metrics = {
-            k: v for k, v in metrics.items() if k in self.evaluation_config.numeric_metrics
+            k: v
+            for k, v in metrics.items()
+            if k in self.evaluation_config.numeric_metrics
         }
         boolean_metrics = {
-            k: v for k, v in metrics.items() if k in self.evaluation_config.boolean_metrics
+            k: v
+            for k, v in metrics.items()
+            if k in self.evaluation_config.boolean_metrics
         }
         numeric_averages = {
-            k: round(v, 3) for k, v in get_averages_from_dict_of_arrays(numeric_metrics).items()
+            k: round(v, 3)
+            for k, v in get_averages_from_dict_of_arrays(numeric_metrics).items()
         }
         boolean_total_trues = {k: sum(v) for k, v in boolean_metrics.items()}
         final_dict = numeric_averages
@@ -370,7 +402,7 @@ class CounterfactualEvaluator:
                     print(f"{('~'*20)}")
             return show_example
 
-        info_frequency = 20
+        info_frequency = 100
 
         num_rows = len(self.data_np)
         all_metric_names = (

@@ -25,7 +25,9 @@ data:
     dataset_name: Pima Indians Diabetes
     file_path: diabetes.csv
     target_name: Outcome
+    target_index: 8
     target_class: 0
+    predictor_indices: [0, 1, 2, 3, 4, 5, 6, 7]
     multiclass_target: False
     separator: ","
 
@@ -35,9 +37,11 @@ evaluation:
 
   missing_data:
     mechanism: MCAR # Possible values: MCAR, MAR, MNAR
-    number_of_missing: 3
+    number_of_missing: 2
 
-  multiple_imputation:
+  imputation:
+    type:
+      mean # Possible values: multiple, mean
     imputations_to_create: 10
 
   counterfactuals:
