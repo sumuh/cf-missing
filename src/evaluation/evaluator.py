@@ -12,7 +12,7 @@ from tensorflow.keras import metrics as tf_metrics
 from ..classifiers.classifier_interface import Classifier
 from ..counterfactual_generator import CounterfactualGenerator
 from ..imputer import Imputer
-from ..data_utils import (
+from ..utils.data_utils import (
     Config,
     get_indices_with_missing_values,
     get_feature_mads,
@@ -37,7 +37,7 @@ class Evaluator:
         self.data_config = data_config
         self.evaluation_config = evaluation_config
         self.classifier = Classifier(
-            evaluation_config.classifier, data_config.predictor_indices
+            evaluation_config.current_params.classifier, data_config.predictor_indices
         )
         self.train_data, self.test_data = train_test_split(data_pd, test_size=0.2)
 
@@ -192,30 +192,15 @@ class CounterfactualEvaluator:
         }
 
     def _introduce_missing_values_to_test_instance(self):
-        """Change values in test instance to nan according to specified
-        missing data mechanism.
+        """Randomly change values in test instance to nan.
 
         :return np.array: test instance with missing value(s)
         """
         test_instance_with_missing_values = self.test_instance_complete_current.copy()
-        mechanism = self.evaluation_config.missing_data.mechanism
-        if mechanism == "MCAR":
-            ind_missing = random.sample(
-                range(0, len(test_instance_with_missing_values)),
-                self.evaluation_config.missing_data.number_of_missing,
-            )
-        elif mechanism == "MAR":
-            # if pedigree fun is below 0.5, insuling is missing
-            if self.test_instance_complete_current[6] < 0.5:
-                test_instance_with_missing_values[4] = np.nan
-        elif mechanism == "MNAR":
-            # if BMI is over 30, BMI is missing
-            if self.test_instance_complete_current[5] > 30:
-                test_instance_with_missing_values[5] = np.nan
-        else:
-            raise RuntimeError(
-                f"Invalid missing data mechanism '{mechanism}'; excpected one of MCAR, MAR, MNAR"
-            )
+        ind_missing = random.sample(
+            range(0, len(test_instance_with_missing_values)),
+            self.evaluation_config.current_params.num_missing,
+        )
         if ind_missing is not None:
             test_instance_with_missing_values[ind_missing] = np.nan
         return test_instance_with_missing_values
@@ -258,10 +243,10 @@ class CounterfactualEvaluator:
             input,
             self.X_train_current,
             self.indices_with_missing_values_current,
-            self.evaluation_config.counterfactuals.counterfactuals_to_return,
-            self.evaluation_config.imputation.imputations_to_create,
+            self.evaluation_config.current_params.k,
+            self.evaluation_config.current_params.n,
             self.data_pd,
-            self.evaluation_config.imputation.type,
+            self.evaluation_config.current_params.imputation_type,
         )
         time_end = time.time()
         wall_time = time_end - time_start
@@ -323,7 +308,7 @@ class CounterfactualEvaluator:
 
         test_instance_metrics = {}
 
-        if self.evaluation_config.missing_data.number_of_missing > 0:
+        if self.evaluation_config.current_params.num_missing > 0:
             # Evaluate input with missing values
             self.test_instance_with_missing_values_current = (
                 self._introduce_missing_values_to_test_instance()
@@ -351,7 +336,7 @@ class CounterfactualEvaluator:
             )
 
         test_instance_metrics.update(
-            {"num_missing_values": len(self.indices_with_missing_values_current)}
+            {"num_missing": len(self.indices_with_missing_values_current)}
         )
 
         return (test_instance_metrics, example_df)
@@ -402,6 +387,7 @@ class CounterfactualEvaluator:
                     print(f"{('~'*20)}")
             return show_example
 
+        # Print status info & example df every info_frequency rows
         info_frequency = 100
 
         num_rows = len(self.data_np)

@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from numpy.testing import assert_array_equal
 
-from src.data_utils import get_indices_with_missing_values, _calculate_mad
+from src.utils.data_utils import get_indices_with_missing_values, _calculate_mad
 
 
 def test_when_no_missing_values_then_no_indices_with_missing_values_found():

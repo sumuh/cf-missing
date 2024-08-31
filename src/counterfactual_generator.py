@@ -14,7 +14,7 @@ from .evaluation.evaluation_metrics import (
     get_average_sparsity,
     get_sparsity,
 )
-from .data_utils import get_feature_mads
+from .utils.data_utils import get_feature_mads
 
 
 class CounterfactualGenerator:
@@ -58,30 +58,39 @@ class CounterfactualGenerator:
             outcome_name=self.target_variable_name,
             continuous_features=predictor_col_names,
         )
+        # Suppress some sklearn(?) progress bar that is being output to stderr for some reason
+        self.block_stderr()
         if isinstance(self.classifier.get_classifier(), ClassifierSklearn):
             model = dice_ml.Model(model=self.classifier.get_model(), backend="sklearn")
             exp = dice_ml.Dice(dice_data, model, method="genetic")
+            e1 = exp.generate_counterfactuals(
+                pd.DataFrame(
+                    input.reshape(-1, len(input)), columns=predictor_col_names
+                ),
+                total_CFs=k,
+                desired_class=self.target_class,
+                proximity_weight=0.5,
+                diversity_weight=1,
+                sparsity_weight=1.5,
+                verbose=False,
+            )
         elif isinstance(self.classifier.get_classifier(), ClassifierTensorFlow):
             model = dice_ml.Model(
                 model=self.classifier.get_model(), backend="TF2", func="ohe-min-max"
             )
             exp = dice_ml.Dice(dice_data, model, method="gradient")
+            e1 = exp.generate_counterfactuals(
+                pd.DataFrame(
+                    input.reshape(-1, len(input)), columns=predictor_col_names
+                ),
+                total_CFs=k,
+                desired_class=self.target_class,
+                verbose=False,
+            )
         else:
             raise RuntimeError(
                 f"Expected one of [ClassifierSklearn, ClassifierTensorFlow], got {self.classifier}"
             )
-        # Suppress some sklearn(?) progress bar that is being output to stderr for some reason
-        self.block_stderr()
-        e1 = exp.generate_counterfactuals(
-            pd.DataFrame(input.reshape(-1, len(input)), columns=predictor_col_names),
-            total_CFs=k,
-            desired_class=self.target_class,
-            # proximity_weight=0.1,
-            # diversity_weight=0.1,
-            # sparsity_weight=10,
-            # posthoc_sparsity_param=0.1,
-            verbose=False,
-        )
         self.enable_stderr()
         return e1.cf_examples_list[0].final_cfs_df.to_numpy()
 
@@ -180,8 +189,8 @@ class CounterfactualGenerator:
         :param str imputation_type: imputation type e.g. mean, multiple
         :param np.array input: input to impute
         :param np.array indices_with_missing_values: indices that have missing values in input
-        :param int n: how many imputations to create if imputation_type is 'multiple' 
-        :raises RuntimeError: raised if unknown imputation_type 
+        :param int n: how many imputations to create if imputation_type is 'multiple'
+        :raises RuntimeError: raised if unknown imputation_type
         :return np.array: 1D or 2D array of imputed versions of input
         """
         if imputation_type == "multiple":
@@ -202,7 +211,7 @@ class CounterfactualGenerator:
         :param np.array imputed_input: input
         :param pd.DataFrame data_pd: data
         :param int k: how many counterfactuals to generate
-        :return np.array: counterfactual array of size k 
+        :return np.array: counterfactual array of size k
         """
         return self._get_dice_counterfactuals(imputed_input, data_pd, k)
 
@@ -282,8 +291,11 @@ class CounterfactualGenerator:
             df.loc[-1] = pd.Series(input)
             df.index = df.index + 1
             df.sort_index(inplace=True)
-            df["sparsities"] = df.apply(
+            df["sparsity"] = df.apply(
                 lambda row: get_sparsity(row[:-1].to_numpy(), input), axis=1
+            )
+            df["distance"] = df[1:].apply(
+                lambda row: get_distance(row[:-2].to_numpy(), input, mads), axis=1
             )
             print(df)
         valid_explanations = self._filter_out_non_valid(explanations)

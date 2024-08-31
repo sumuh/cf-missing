@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import os
-import matplotlib.pyplot as plt
 from collections import defaultdict
 
 
@@ -32,7 +31,7 @@ def load_data(relative_path: str, separator: str) -> pd.DataFrame:
     :return pd.DataFrame: raw dataset
     """
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    data_path = f"{dir_path}/../data/{relative_path}"
+    data_path = f"{dir_path}/../../data/{relative_path}"
     data = pd.read_csv(data_path, sep=separator)
     return data
 
@@ -83,30 +82,6 @@ def get_X_y(
     return X_train, y_train
 
 
-def show_correlation_matrix(data: pd.DataFrame):
-    """Plots correlation matrix.
-
-    :param pd.DataFrame data: data
-    """
-    f = plt.figure(figsize=(12, 10))
-    plt.matshow(data.corr(), fignum=f.number)
-    plt.xticks(
-        range(data.select_dtypes(["number"]).shape[1]),
-        data.select_dtypes(["number"]).columns,
-        fontsize=14,
-        rotation=45,
-    )
-    plt.yticks(
-        range(data.select_dtypes(["number"]).shape[1]),
-        data.select_dtypes(["number"]).columns,
-        fontsize=14,
-    )
-    cb = plt.colorbar()
-    cb.ax.tick_params(labelsize=14)
-    plt.title("Correlation Matrix", fontsize=16)
-    plt.show()
-
-
 def get_data_metrics(data: pd.DataFrame, target_name: str) -> dict[str, int]:
     """Obtain metrics from dataset.
 
@@ -122,25 +97,6 @@ def get_data_metrics(data: pd.DataFrame, target_name: str) -> dict[str, int]:
         "label_0": label_0,
         "label_1": label_1,
     }
-
-
-def explore_data(data: pd.DataFrame):
-    """Print auto-generated summaries and plots for dataframe.
-
-    :param pd.DataFrame data: dataset to summarize
-    """
-    symbol = "="
-    print(f"{symbol*12} Data exploration {symbol*12}")
-    print("\nColumn types:\n")
-    print(data.info())
-    print("\nStatistics:\n")
-    print(data.describe())
-    print("\nCorrelations:")
-    print(data.corr())
-    data.hist()
-    plt.show()
-    show_correlation_matrix(data)
-    print(f"{symbol*42}")
 
 
 def get_feature_min_values(data: np.array) -> np.array:
@@ -222,53 +178,3 @@ def get_counts_of_values_in_arrays(list_of_arrs: list[np.array]) -> dict[str, in
             count_dict[str(value)] += int(np.sum(arr == value))
 
     return dict(count_dict)
-
-
-def save_data_histogram(data: pd.DataFrame, file_path: str = None):
-    """Plots histograms of each feature in data and saves image to given path.
-
-    :param pd.DataFrame data: dataframe
-    :param str file_path: file path for saving image, defaults to None
-    """
-    data.hist(grid=False, figsize=(19, 15))
-    plt.savefig(file_path)
-
-
-def plot_metric_histograms(
-    metrics: dict[str, np.array], save_to_file: bool, show: bool, file_path: str = None
-):
-    """Plots histograms of each metric and saves image to given path if save_to_file is True.
-
-    :param dict[str, np.array] metrics: dict of metrics
-    :param bool save_to_file: whether to save image
-    :param bool show: whether to show image
-    :param str file_path: file path for saving image, defaults to None
-    """
-    fig, axes = plt.subplots(2, 4, figsize=(19, 15))
-    axes = axes.flatten()
-    for i, (metric_name, metric_values) in enumerate(metrics.items()):
-        axes[i].hist(metric_values)
-        axes[i].set_title(metric_name)
-
-    # Remove empty subplots
-    for j in range(i + 1, len(axes)):
-        fig.delaxes(axes[j])
-
-    plt.tight_layout()
-    if save_to_file:
-        plt.savefig(file_path)
-    if show:
-        plt.show()
-
-
-def get_str_from_dict_for_saving(dict_to_save: dict, dict_name: str) -> str:
-    """Utility method for generating string based on dictionary.
-
-    :param dict dict_to_save: dictionary to stringify
-    :param str dict_name: name of dictionary
-    :return str: string representation of dict name and contents
-    """
-    s = "-"
-    title = f"{s*12} {dict_name} {s*12}\n"
-    content = "\n".join([f"{item[0]}\t{item[1]}" for item in dict_to_save.items()])
-    return title + content

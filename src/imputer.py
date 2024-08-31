@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.linear_model import BayesianRidge
 from scipy import stats
-from .data_utils import get_feature_min_values, get_feature_max_values
+from .utils.data_utils import get_feature_min_values, get_feature_max_values
 
 
 class Imputer:

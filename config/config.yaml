@@ -32,22 +32,44 @@ data:
     separator: ","
 
 evaluation:
-  classifier:
-    sklearn # Possible values: sklearn, tensorflow
+  params:
+    classifier: # Possible values: sklearn, tensorflow
+      - sklearn
+      #- tensorflow 
 
-  missing_data:
-    mechanism: MCAR # Possible values: MCAR, MAR, MNAR
-    number_of_missing: 2
+    num_missing:
+      #- 1
+      - 2
+      #- 3
 
-  imputation:
-    type:
-      mean # Possible values: multiple, mean
-    imputations_to_create: 10
+    imputation_type:
+      - mean
+      - multiple
 
-  counterfactuals:
-    counterfactuals_to_return: 3
+    n:
+      - 10
+
+    k:
+      - 3
+
+  current_params:
+    classifier:
+      None
+
+    num_missing:
+      None
+
+    imputation_type:
+      None
+
+    n:
+      None
+    
+    k:
+      None
 
   debug:
+    #True
     False
 
   save_results:
@@ -66,7 +88,7 @@ evaluation:
     - count_diversity_missing_values
     - avg_sparsity
     - runtime_seconds
-    - num_missing_values
+    - num_missing
     
   boolean_metrics:
     - undesired_class
