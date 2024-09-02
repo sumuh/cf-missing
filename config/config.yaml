@@ -34,26 +34,44 @@ data:
 evaluation:
   params:
     classifier: # Possible values: sklearn, tensorflow
-      - sklearn
-      #- tensorflow 
+      #- sklearn
+      - tensorflow 
+
+    ind_missing:
+      - random
+      - 0
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
 
     num_missing:
-      #- 1
+      - 1
       - 2
-      #- 3
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
 
     imputation_type:
       - mean
       - multiple
 
     n:
-      - 10
+      - 5
 
     k:
       - 3
 
   current_params:
     classifier:
+      None
+    
+    ind_missing:
       None
 
     num_missing:

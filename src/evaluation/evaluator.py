@@ -25,6 +25,7 @@ from .evaluation_metrics import (
     get_average_distance_from_original,
     get_valid_ratio,
     get_count_diversity,
+    get_distance,
 )
 
 
@@ -39,7 +40,8 @@ class Evaluator:
         self.classifier = Classifier(
             evaluation_config.current_params.classifier, data_config.predictor_indices
         )
-        self.train_data, self.test_data = train_test_split(data_pd, test_size=0.2)
+        self.data = data_pd
+        self.train_data, self.test_data = train_test_split(data_pd, test_size=0.15)
 
     def evaluate_classifier(self) -> dict[str, float]:
         """Evaluates classifier on test data.
@@ -57,12 +59,17 @@ class Evaluator:
         :return tuple[dict, dict]: dict where key is metric name and value is metric value
         """
         counterfactual_evaluator = CounterfactualEvaluator(
-            self.data_config, self.evaluation_config, self.train_data, self.classifier
+            self.data_config, self.evaluation_config, self.data, self.classifier
         )
         histogram_dict, aggregated_results = (
             counterfactual_evaluator.perform_evaluation()
         )
         return histogram_dict, aggregated_results
+
+    def evaluate_imputer(self) -> dict[str, list[float]]:
+        imputer_evaluator = ImputerEvaluator(self.train_data, self.test_data)
+        mean_results = imputer_evaluator.evaluate_mean_imputation()
+        multiple_results = imputer_evaluator.evaluate_multiple_imputation()
 
 
 class ClassifierEvaluator:
@@ -107,6 +114,39 @@ class ClassifierEvaluator:
             "roc_auc": round(roc_auc, 3),
             "f1": round(f1, 3),
         }
+
+
+class ImputerEvaluator:
+    def __init__(self, train_data, test_data):
+        self.imputer = Imputer(train_data.to_numpy()[:, :-1], True)
+        self.test_data = test_data.to_numpy()[:, :-1]
+        self.mads = get_feature_mads(train_data.to_numpy()[:, :-1])
+
+    def evaluate_mean_imputation(self):
+        total_avg_distances = [x for x in range(self.test_data.shape[1])]
+        for row_ind in range(self.test_data.shape[0]):
+            test_input = self.test_data[row_ind, :]
+            for i in range(test_input.size):
+                test_input_mis = test_input.copy()
+                test_input_mis[i] = np.nan
+                imputated = self.imputer.mean_imputation(test_input_mis, [i])
+                total_avg_distances[i] += get_distance(test_input, imputated, self.mads)
+        total_avg_distances = np.array(total_avg_distances) / self.test_data.shape[0]
+        return total_avg_distances
+
+    def evaluate_multiple_imputation(self):
+        total_avg_distances = [x for x in range(self.test_data.shape[1])]
+        for row_ind in range(self.test_data.shape[0]):
+            test_input = self.test_data[row_ind, :]
+            for i in range(test_input.size):
+                test_input_mis = test_input.copy()
+                test_input_mis[i] = np.nan
+                imputations = self.imputer.multiple_imputation(test_input_mis, [i], 10)
+                total_avg_distances[i] += get_average_distance_from_original(
+                    test_input, imputations, self.mads
+                )
+        total_avg_distances = np.array(total_avg_distances) / self.test_data.shape[0]
+        return total_avg_distances
 
 
 class CounterfactualEvaluator:
@@ -170,14 +210,16 @@ class CounterfactualEvaluator:
                 count_diversity_missing_values = get_count_diversity(
                     counterfactuals[:, self.indices_with_missing_values_current]
                 )
+                # Calculate sparsity from imputed test instance
+                avg_sparsity = get_average_sparsity(
+                    self.test_instance_imputed_current, counterfactuals
+                )
             else:
                 diversity_missing_values = 0
                 count_diversity_missing_values = 0
-
-            # Calculate sparsity from imputed test instance
-            avg_sparsity = get_average_sparsity(
-                self.test_instance_imputed_current, counterfactuals
-            )
+                avg_sparsity = get_average_sparsity(
+                    self.test_instance_complete_current, counterfactuals
+                )
 
         return {
             "n_vectors": n_cfs,
@@ -197,12 +239,17 @@ class CounterfactualEvaluator:
         :return np.array: test instance with missing value(s)
         """
         test_instance_with_missing_values = self.test_instance_complete_current.copy()
-        ind_missing = random.sample(
-            range(0, len(test_instance_with_missing_values)),
-            self.evaluation_config.current_params.num_missing,
-        )
-        if ind_missing is not None:
-            test_instance_with_missing_values[ind_missing] = np.nan
+        if (
+            self.evaluation_config.current_params.num_missing == 1
+            and self.evaluation_config.current_params.ind_missing != "random"
+        ):
+            ind_missing = self.evaluation_config.current_params.ind_missing
+        else:
+            ind_missing = random.sample(
+                range(0, len(test_instance_with_missing_values)),
+                self.evaluation_config.current_params.num_missing,
+            )
+        test_instance_with_missing_values[ind_missing] = np.nan
         return test_instance_with_missing_values
 
     def _get_test_instance(self, row_ind: int) -> np.array:

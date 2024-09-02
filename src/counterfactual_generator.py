@@ -69,8 +69,8 @@ class CounterfactualGenerator:
                 ),
                 total_CFs=k,
                 desired_class=self.target_class,
-                proximity_weight=0.5,
-                diversity_weight=1,
+                proximity_weight=1,
+                diversity_weight=0.5,
                 sparsity_weight=1.5,
                 verbose=False,
             )
@@ -99,8 +99,8 @@ class CounterfactualGenerator:
         candidate_counterfactuals: np.array,
         input: np.array,
         mads: np.array,
-        lambda_1: float = 0.5,
-        lambda_2: float = 1,
+        lambda_1: float = 1,
+        lambda_2: float = 0.5,
         lambda_3: float = 1.5,
     ) -> float:
         """Loss function modified from Mothilal et al. (2020)
@@ -143,6 +143,8 @@ class CounterfactualGenerator:
         """
         best_loss = float("inf")
         best_set = None
+        if len(counterfactuals) < final_set_size:
+            return counterfactuals
         for comb in combinations(counterfactuals, final_set_size):
             current_set = np.array(comb)
             loss = self._selection_loss_function(current_set, input, mads)
@@ -277,7 +279,7 @@ class CounterfactualGenerator:
         if input_for_explanations.ndim == 1:
             # Simple imputation was performed OR no missing values in input
             explanations = self._get_explanations_for_single_input(
-                input_for_explanations, data_pd, k * n
+                input_for_explanations, data_pd, k
             )
         else:
             # Multiple imputation was performed
@@ -307,5 +309,15 @@ class CounterfactualGenerator:
         )
         if self.debug:
             print(f"Final k selections:")
-            print(pd.DataFrame(final_explanations))
+            df = pd.DataFrame(final_explanations)
+            df.loc[-1] = pd.Series(input)
+            df.index = df.index + 1
+            df.sort_index(inplace=True)
+            df["sparsity"] = df.apply(
+                lambda row: get_sparsity(row.to_numpy(), input), axis=1
+            )
+            df["distance"] = df.apply(
+                lambda row: get_distance(row[:-1].to_numpy(), input, mads), axis=1
+            )
+            print(df)
         return final_explanations

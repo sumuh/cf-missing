@@ -3,6 +3,8 @@ import json
 import yaml
 import sys
 import itertools
+import time
+import pandas as pd
 from datetime import datetime
 from pathlib import Path
 from .evaluation.evaluator import Evaluator
@@ -13,13 +15,15 @@ from .evaluation.evaluation_results_container import (
 from .utils.data_utils import (
     Config,
     load_data,
-    transform_target_to_binary_class,
-    drop_rows_with_missing_values,
+    transform_data,
     get_data_metrics,
 )
 from .utils.visualization_utils import (
+    save_data_histograms,
+    save_imputation_type_results_per_missing_value_count_plot,
+    save_imputation_type_results_per_feature_with_missing_value,
+    save_data_boxplots,
     explore_data,
-    plot_imputation_type_results_per_missing_value_count,
 )
 
 
@@ -45,6 +49,7 @@ def load_config(config_file_path: str) -> dict:
 
 
 def run_evaluation_with_config(
+    data: pd.DataFrame,
     data_config: Config,
     evaluation_config: Config,
 ) -> dict:
@@ -56,37 +61,16 @@ def run_evaluation_with_config(
     :param Config evaluation_config: evaluation configuration
     """
 
-    # Choose and load dataset to use
-    data = load_data(data_config.file_path, data_config.separator)
-
-    # For now multiclass classification is not supported so convert to binary class if needed
-    if data_config.multiclass_target:
-        data = transform_target_to_binary_class(
-            data,
-            data_config.target_name,
-            data_config.multiclass_threshold,
-        )
-
-    if data_config.dataset_name == "Pima Indians Diabetes":
-        data = drop_rows_with_missing_values(data)
-
-    # data = data[:50]
-
-    results_container = SingleEvaluationResultsContainer(
-        data_config, evaluation_config, data
-    )
-
-    if evaluation_config.show_plots:
-        explore_data(data)
-
-    data_metrics = get_data_metrics(data, data_config.target_name)
-    results_container.set_data_metrics(data_metrics)
+    results_container = SingleEvaluationResultsContainer(evaluation_config, data)
 
     # Evaluate counterfactual generation for each row in dataset and return average metrics
     evaluator = Evaluator(data, data_config, evaluation_config)
     classifier_metrics = evaluator.evaluate_classifier()
+    print(json.dumps(classifier_metrics, indent=2))
+    evaluator.evaluate_imputer()
     results_container.set_classifier_metrics(classifier_metrics)
     histogram_dict, aggregated_results = evaluator.evaluate_counterfactual_generation()
+    print(json.dumps(aggregated_results, indent=2))
     results_container.set_counterfactual_metrics(aggregated_results)
     results_container.set_counterfactual_histogram_dict(histogram_dict)
 
@@ -95,6 +79,7 @@ def run_evaluation_with_config(
 
 def main():
     print("Running evaluation...")
+    time_start = time.time()
     current_file_path = os.path.dirname(os.path.realpath(__file__))
     config_all = Config(load_config(f"{current_file_path}/../config/config.yaml"))
     data_config = Config(config_all.data.diabetes.get_dict())
@@ -113,9 +98,30 @@ def main():
     lists = params_to_vary_dict.values()
     param_combinations = itertools.product(*lists)
 
+    # Load and transform data
+    data = load_data(data_config.file_path, data_config.separator)
+    data = transform_data(data, data_config)
+    # explore_data(data)
+    # For testing
+    # data = data[:75]
+    data_metrics = get_data_metrics(data, data_config.target_name)
+    all_results_container.set_data_metrics(data_metrics)
+
+    # Save data metrics to metrics dir
+    Path(results_dir).mkdir(parents=True)
+    save_data_histograms(data, f"{results_dir}/data_hists.png")
+    # sys.exit()
+    save_data_boxplots(data, f"{results_dir}/data_boxplots.png")
+
     # Loop combinations of params specified in config.yaml
     for param_combination in param_combinations:
         current_params_dict = dict(zip(params_to_vary_names, param_combination))
+        # Skip unnecessary combinations
+        if (
+            current_params_dict["num_missing"] > 1
+            and current_params_dict["ind_missing"] != "random"
+        ):
+            continue
         # Set current_params as the current combinations
         for k, v in current_params_dict.items():
             evaluation_config_dict["current_params"][k] = v
@@ -123,15 +129,26 @@ def main():
             f"Running evaluation for params: {json.dumps(current_params_dict, indent=2)}"
         )
         evaluation_results = run_evaluation_with_config(
-            data_config, Config(evaluation_config_dict)
+            data, data_config, Config(evaluation_config_dict)
         )
-        evaluation_results.pretty_print_all()
         evaluation_results.set_evaluation_params_dict(current_params_dict)
         all_results_container.add_evaluation(evaluation_results)
 
-    Path(results_dir).mkdir(parents=True)
-    plot_imputation_type_results_per_missing_value_count(
-        all_results_container, results_dir
+    # Save evaluation results to results_dir
+    if "random" in evaluation_config_dict["params"]["ind_missing"]:
+        save_imputation_type_results_per_missing_value_count_plot(
+            all_results_container,
+            f"{results_dir}/imputation_type_results_per_missing_value_count.png",
+        )
+    save_imputation_type_results_per_feature_with_missing_value(
+        all_results_container,
+        data.columns.to_list()[:-1],
+        f"{results_dir}/imputation_type_results_per_feature_with_missing_value.png",
+    )
+    time_end = time.time()
+    print(f"Evaluation done. Took {(time_end - time_start) / 60} minutes")
+    all_results_container.save_stats_to_file(
+        f"{results_dir}/config.txt", (time_end - time_start)
     )
 
 

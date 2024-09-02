@@ -1,9 +1,12 @@
 import numpy as np
 import tensorflow as tf
 import os
+import sys
 
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.exceptions import NotFittedError
+
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
 
 class ClassifierTensorFlow:
@@ -13,8 +16,8 @@ class ClassifierTensorFlow:
         self,
         predictor_indices: list[int],
         threshold: float = 0.5,
-        epochs: int = 50,
-        batch_size: int = 128,
+        epochs: int = 100,
+        batch_size: int = 10,
     ):
         self.predictor_indices = predictor_indices
         self.scaler = MinMaxScaler()
@@ -22,7 +25,6 @@ class ClassifierTensorFlow:
         self.epochs = epochs
         self.batch_size = batch_size
         self.model = None
-        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
     def build_model(self, input_dim: int) -> tf.keras.Model:
         """Builds a simple logistic regression model using TensorFlow.
@@ -34,7 +36,7 @@ class ClassifierTensorFlow:
             [
                 tf.keras.layers.InputLayer(input_shape=(input_dim,)),
                 tf.keras.layers.Dense(10, activation="relu"),
-                tf.keras.layers.Dense(5, activation="relu"),
+                # tf.keras.layers.Dense(5, activation="relu"),
                 tf.keras.layers.Dense(1, activation="sigmoid"),
             ]
         )

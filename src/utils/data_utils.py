@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import sys
 from collections import defaultdict
 
 
@@ -33,6 +34,25 @@ def load_data(relative_path: str, separator: str) -> pd.DataFrame:
     dir_path = os.path.dirname(os.path.realpath(__file__))
     data_path = f"{dir_path}/../../data/{relative_path}"
     data = pd.read_csv(data_path, sep=separator)
+    return data
+
+
+def transform_data(data: pd.DataFrame, data_config: Config) -> pd.DataFrame:
+    # For now multiclass classification is not supported so convert to binary class if needed
+    if data_config.multiclass_target:
+        data = transform_target_to_binary_class(
+            data,
+            data_config.target_name,
+            data_config.multiclass_threshold,
+        )
+
+    print(f"Rows before drop: {len(data)}")
+
+    if data_config.dataset_name == "Pima Indians Diabetes":
+        data = drop_rows_with_missing_values(data)
+
+    print(f"Rows after drop: {len(data)}")
+
     return data
 
 
@@ -178,3 +198,16 @@ def get_counts_of_values_in_arrays(list_of_arrs: list[np.array]) -> dict[str, in
             count_dict[str(value)] += int(np.sum(arr == value))
 
     return dict(count_dict)
+
+
+def get_str_from_dict(dict_to_save: dict, dict_name: str) -> str:
+    """Utility method for generating string based on dictionary.
+
+    :param dict dict_to_save: dictionary to stringify
+    :param str dict_name: name of dictionary
+    :return str: string representation of dict name and contents
+    """
+    s = "-"
+    title = f"{s*12} {dict_name} {s*12}\n"
+    content = "\n".join([f"{item[0]}\t{item[1]}" for item in dict_to_save.items()])
+    return title + content
