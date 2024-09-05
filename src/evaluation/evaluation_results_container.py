@@ -40,26 +40,19 @@ class SingleEvaluationResultsContainer:
     def get_counterfactual_metrics(self):
         return self.counterfactual_metrics
 
-    def get_counterfactual_plot_metrics(self):
-        plot_metrics = [
-            "avg_n_vectors",
-            "avg_dist_from_original",
-            "avg_diversity",
-            "avg_count_diversity",
-            "avg_diversity_missing_values",
-            "avg_count_diversity_missing_values",
-            "avg_sparsity",
-            "avg_runtime_seconds",
-        ]
-        return {
-            k: v for k, v in self.counterfactual_metrics.items() if k in plot_metrics
-        }
-
     def set_counterfactual_histogram_dict(self, histogram_dict: dict):
         self.counterfactual_histogram_dict = histogram_dict
 
     def get_counterfactual_histogram_dict(self):
         return self.counterfactual_histogram_dict
+
+    def append_results_to_file(self, file_path: str):
+        params_str = get_str_from_dict(
+            self.evaluation_config.get_dict()["current_params"], "evaluation parameters"
+        )
+        results_str = get_str_from_dict(self.counterfactual_metrics, "results")
+        with open(file_path, "a") as file:
+            file.write(params_str + "\n" + results_str + "\n\n")
 
 
 class EvaluationResultsContainer:
@@ -95,10 +88,20 @@ class EvaluationResultsContainer:
 
     def get_data_metrics(self) -> dict:
         return self.data_metrics
+    
+    def set_runtime(self, runtime: float):
+        self.runtime = runtime
 
-    def save_stats_to_file(self, file_path: str, runtime: float):
+    def get_runtime(self) -> float:
+        return self.runtime
+
+    def save_stats_to_file(self, file_path: str):
         with open(file_path, "w") as file:
             config_dict = self.all_evaluation_params_dict
-            config_dict.update({"total_runtime": f"{runtime / 60} minutes"})
+            config_dict.update({"total_runtime": f"{self.get_runtime() / 60} minutes"})
             str_to_write = get_str_from_dict(config_dict, "evaluation parameters")
             file.write(str_to_write)
+
+    def save_all_results_to_file(self, file_path: str):
+        for evaluation in self.evaluations:
+            evaluation.append_results_to_file(file_path)

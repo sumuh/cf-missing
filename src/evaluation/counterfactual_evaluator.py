@@ -5,10 +5,8 @@ import json
 import sys
 import random
 from typing import Callable
-from sklearn.model_selection import train_test_split
-from sklearn import metrics as metrics
-from tensorflow.keras import metrics as tf_metrics
 
+from ..hyperparams.hyperparam_optimization import HyperparamOptimizer
 from ..classifiers.classifier_interface import Classifier
 from ..counterfactual_generator import CounterfactualGenerator
 from ..imputer import Imputer
@@ -23,130 +21,9 @@ from .evaluation_metrics import (
     get_average_sparsity,
     get_diversity,
     get_average_distance_from_original,
-    get_valid_ratio,
     get_count_diversity,
     get_distance,
 )
-
-
-class Evaluator:
-    """Class used to evaluate classifier and counterfactual generation process."""
-
-    def __init__(
-        self, data_pd: pd.DataFrame, data_config: Config, evaluation_config: Config
-    ):
-        self.data_config = data_config
-        self.evaluation_config = evaluation_config
-        self.classifier = Classifier(
-            evaluation_config.current_params.classifier, data_config.predictor_indices
-        )
-        self.data = data_pd
-        self.train_data, self.test_data = train_test_split(data_pd, test_size=0.15)
-
-    def evaluate_classifier(self) -> dict[str, float]:
-        """Evaluates classifier on test data.
-
-        :return dict[str, float]: dict where key is metric name and value is metric value
-        """
-        classifier_evaluator = ClassifierEvaluator(
-            self.data_config, self.train_data, self.test_data, self.classifier
-        )
-        return classifier_evaluator.evaluate_classifier()
-
-    def evaluate_counterfactual_generation(self) -> tuple[dict, dict]:
-        """Evaluates counterfactual generation.
-
-        :return tuple[dict, dict]: dict where key is metric name and value is metric value
-        """
-        counterfactual_evaluator = CounterfactualEvaluator(
-            self.data_config, self.evaluation_config, self.data, self.classifier
-        )
-        histogram_dict, aggregated_results = (
-            counterfactual_evaluator.perform_evaluation()
-        )
-        return histogram_dict, aggregated_results
-
-    def evaluate_imputer(self) -> dict[str, list[float]]:
-        imputer_evaluator = ImputerEvaluator(self.train_data, self.test_data)
-        mean_results = imputer_evaluator.evaluate_mean_imputation()
-        multiple_results = imputer_evaluator.evaluate_multiple_imputation()
-
-
-class ClassifierEvaluator:
-    """Class for evaluating classifiers."""
-
-    def __init__(self, data_config, train_data, test_data, classifier):
-        self.data_config = data_config
-        self.train_data = train_data.to_numpy()
-        self.test_data = test_data.to_numpy()
-        self.classifier = classifier
-
-    def get_y_pred_y_true(self) -> tuple[list, list]:
-        """Get predicted labels and true labels for test data.
-
-        :return tuple[list, list]: predicted labels and true labels
-        """
-        X_train, y_train = get_X_y(
-            self.train_data,
-            self.data_config.predictor_indices,
-            self.data_config.target_index,
-        )
-        X_test, y_test = get_X_y(
-            self.test_data,
-            self.data_config.predictor_indices,
-            self.data_config.target_index,
-        )
-        self.classifier.train(X_train, y_train)
-        y_pred = [self.classifier.predict(X_test_row) for X_test_row in X_test]
-        return (y_pred, y_test)
-
-    def evaluate_classifier(self) -> dict[str, float]:
-        """Calculate various performance metrics for classifier.
-
-        :return dict[str, float]: dict where key is metric name and value is metric value
-        """
-        y_pred, y_true = self.get_y_pred_y_true()
-        accuracy = metrics.accuracy_score(y_true, y_pred)
-        roc_auc = metrics.roc_auc_score(y_true, y_pred)
-        f1 = metrics.f1_score(y_true, y_pred)
-        return {
-            "accuracy": round(accuracy, 3),
-            "roc_auc": round(roc_auc, 3),
-            "f1": round(f1, 3),
-        }
-
-
-class ImputerEvaluator:
-    def __init__(self, train_data, test_data):
-        self.imputer = Imputer(train_data.to_numpy()[:, :-1], True)
-        self.test_data = test_data.to_numpy()[:, :-1]
-        self.mads = get_feature_mads(train_data.to_numpy()[:, :-1])
-
-    def evaluate_mean_imputation(self):
-        total_avg_distances = [x for x in range(self.test_data.shape[1])]
-        for row_ind in range(self.test_data.shape[0]):
-            test_input = self.test_data[row_ind, :]
-            for i in range(test_input.size):
-                test_input_mis = test_input.copy()
-                test_input_mis[i] = np.nan
-                imputated = self.imputer.mean_imputation(test_input_mis, [i])
-                total_avg_distances[i] += get_distance(test_input, imputated, self.mads)
-        total_avg_distances = np.array(total_avg_distances) / self.test_data.shape[0]
-        return total_avg_distances
-
-    def evaluate_multiple_imputation(self):
-        total_avg_distances = [x for x in range(self.test_data.shape[1])]
-        for row_ind in range(self.test_data.shape[0]):
-            test_input = self.test_data[row_ind, :]
-            for i in range(test_input.size):
-                test_input_mis = test_input.copy()
-                test_input_mis[i] = np.nan
-                imputations = self.imputer.multiple_imputation(test_input_mis, [i], 10)
-                total_avg_distances[i] += get_average_distance_from_original(
-                    test_input, imputations, self.mads
-                )
-        total_avg_distances = np.array(total_avg_distances) / self.test_data.shape[0]
-        return total_avg_distances
 
 
 class CounterfactualEvaluator:
@@ -158,10 +35,12 @@ class CounterfactualEvaluator:
         evaluation_config: Config,
         data_pd: pd.DataFrame,
         classifier: Classifier,
+        hyperparam_opt: HyperparamOptimizer,
     ):
         self.data_config = data_config
         self.evaluation_config = evaluation_config
         self.debug = evaluation_config.debug
+        self.hyperparam_opt = hyperparam_opt
         self.classifier = classifier
 
         if self.debug:
@@ -179,6 +58,7 @@ class CounterfactualEvaluator:
             self.classifier,
             data_config.target_class,
             data_config.target_name,
+            self.hyperparam_opt,
             self.debug,
         )
 
@@ -193,9 +73,6 @@ class CounterfactualEvaluator:
         """
         n_cfs = len(counterfactuals)
         if n_cfs > 0:
-            valid_ratio = get_valid_ratio(
-                counterfactuals, prediction_func, self.data_config.target_class
-            )
             mads = get_feature_mads(self.X_train_current)
             avg_dist_from_original = get_average_distance_from_original(
                 self.test_instance_complete_current, counterfactuals, mads
@@ -223,8 +100,6 @@ class CounterfactualEvaluator:
 
         return {
             "n_vectors": n_cfs,
-            "no_cf_found": n_cfs == 0,
-            "valid_ratio": valid_ratio,
             "avg_dist_from_original": avg_dist_from_original,
             "diversity": diversity,
             "count_diversity": count_diversity,
@@ -411,6 +286,12 @@ class CounterfactualEvaluator:
         boolean_total_trues = {k: sum(v) for k, v in boolean_metrics.items()}
         final_dict = numeric_averages
         final_dict.update(boolean_total_trues)
+        # Add coverage: ratio of test inputs for which at least one cf was found
+        num_inputs_cf_found = filter(lambda x: x > 0, metrics["n_vectors"])
+        total_inputs_cf_required = metrics["n_vectors"]
+        final_dict.update(
+            {"coverage": len(list(num_inputs_cf_found)) / len(total_inputs_cf_required)}
+        )
         return final_dict
 
     def perform_evaluation(self):
@@ -450,7 +331,9 @@ class CounterfactualEvaluator:
             show_example = False
 
         for row_ind in range(num_rows):
-            show_example = row_ind % info_frequency == 0 or show_example
+            show_example = (
+                row_ind % info_frequency == 0 or show_example
+            ) and self.debug
             result = self._evaluate_single_instance(row_ind)
             single_instance_metrics = result[0]
             if self.debug:

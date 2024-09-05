@@ -34,8 +34,8 @@ data:
 evaluation:
   params:
     classifier: # Possible values: sklearn, tensorflow
-      #- sklearn
-      - tensorflow 
+      - sklearn
+      #- tensorflow 
 
     ind_missing:
       - random
@@ -98,7 +98,6 @@ evaluation:
 
   numeric_metrics:
     - n_vectors
-    - valid_ratio
     - avg_dist_from_original
     - diversity
     - count_diversity
@@ -110,7 +109,6 @@ evaluation:
     
   boolean_metrics:
     - undesired_class
-    - no_cf_found
 
   metrics_for_histograms:
     - avg_dist_from_original

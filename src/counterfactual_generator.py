@@ -4,6 +4,7 @@ import dice_ml
 import sys, os
 from itertools import combinations
 
+from .hyperparams.hyperparam_optimization import HyperparamOptimizer
 from .classifiers.classifier_interface import Classifier
 from .classifiers.classifier_sklearn import ClassifierSklearn
 from .classifiers.classifier_tensorflow import ClassifierTensorFlow
@@ -24,11 +25,13 @@ class CounterfactualGenerator:
         classifier: Classifier,
         target_class: int,
         target_variable_name: str,
+        hyperparam_opt: HyperparamOptimizer,
         debug: bool,
     ):
         self.classifier = classifier
         self.target_class = target_class
         self.target_variable_name = target_variable_name
+        self.hyperparam_opt = hyperparam_opt
         self.debug = debug
 
     def block_stderr(self):
@@ -261,7 +264,7 @@ class CounterfactualGenerator:
         :param str method: counterfactual generation method
         :return np.array: array with n rows
         """
-        imputer = Imputer(X_train, True, self.debug)
+        imputer = Imputer(X_train, self.hyperparam_opt, True, self.debug)
         mads = get_feature_mads(X_train)
         if len(indices_with_missing_values) > 0:
             # Evaluate input with missing values

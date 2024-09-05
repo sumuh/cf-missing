@@ -1,7 +1,9 @@
 import numpy as np
+import json
 from sklearn.linear_model import BayesianRidge
 from scipy import stats
 from .utils.data_utils import get_feature_min_values, get_feature_max_values
+from .hyperparams.hyperparam_optimization import HyperparamOptimizer
 
 
 class Imputer:
@@ -9,29 +11,45 @@ class Imputer:
     def __init__(
         self,
         train_data: np.array,
+        hyperparam_opt: HyperparamOptimizer = None,
         init_multiple_imputation: bool = False,
         debug: bool = False,
     ):
         if init_multiple_imputation:
-            self.fcs_models = self._init_fcs_models(train_data)
+            self.fcs_models = self._init_fcs_models(train_data, hyperparam_opt)
             self.min_values = get_feature_min_values(train_data)
             self.max_values = get_feature_max_values(train_data)
         self.feature_means = np.apply_along_axis(np.mean, 0, train_data)
         self.debug = debug
 
-    def _init_fcs_models(self, train_data: np.array) -> list[BayesianRidge]:
+    def _init_fcs_models(
+        self, train_data: np.array, hyperparam_opt: HyperparamOptimizer
+    ) -> list[BayesianRidge]:
         """Initializes feature-specific imputation models for FCS multiple imputation.
 
         :param np.array train_data: train dataset without target
+        :param HyperparamOptimizer hyperparam_opt: object containing optimized hyperparams
         :return list[BayesianRidge]: list of models
         """
         models = []
+        hyperparam_dicts = hyperparam_opt.get_best_hyperparams_for_imputation_models(
+            True
+        )
         for feat_ind in range(train_data.shape[1]):
+            hyperparam_dict = hyperparam_dicts[feat_ind]
             mask = np.ones(train_data.shape[1], dtype=bool)
             mask[feat_ind] = False
             X = train_data[:, mask]
             y = train_data[:, feat_ind]
-            model = BayesianRidge().fit(X, y)
+            model = BayesianRidge(
+                max_iter=hyperparam_dict["max_iter"],
+                tol=hyperparam_dict["tol"],
+                alpha_1=hyperparam_dict["alpha_1"],
+                alpha_2=hyperparam_dict["alpha_2"],
+                lambda_1=hyperparam_dict["lambda_1"],
+                lambda_2=hyperparam_dict["lambda_2"],
+                fit_intercept=hyperparam_dict["fit_intercept"],
+            ).fit(X, y)
             models.append(model)
         return models
 
@@ -81,7 +99,7 @@ class Imputer:
         :return np.array: multiply imputed input
         """
         # Adapted from sklearn IterativeImputer: https://github.com/scikit-learn/scikit-learn/blob/main/sklearn/impute/_iterative.py
-        for j in range(2):  # two iters?
+        for _ in range(2):  # two iters?
             # Update each initially missing variable based on its FC model
             for feat_i in indices_with_missing_values:
                 estimator = self.fcs_models[feat_i]
@@ -97,16 +115,19 @@ class Imputer:
                 if sigma < 0:
                     input[feat_i] = mu
                 elif mu < min_value:
-                    input[feat_i] = min_value
+                    # input[feat_i] = min_value
+                    input[feat_i] = mu
                 elif mu > max_value:
-                    input[feat_i] = max_value
+                    # input[feat_i] = max_value
+                    input[feat_i] = mu
                 else:
                     # Random draws from distribution
                     a = (min_value - mu) / sigma
                     b = (max_value - mu) / sigma
 
                     truncated_normal = stats.truncnorm(a=a, b=b, loc=mu, scale=sigma)
-                    input[feat_i] = truncated_normal.rvs()
+                    sample = truncated_normal.rvs()
+                    input[feat_i] = sample
         return input
 
     def multiple_imputation(

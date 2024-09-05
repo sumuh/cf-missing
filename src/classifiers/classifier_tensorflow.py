@@ -16,8 +16,8 @@ class ClassifierTensorFlow:
         self,
         predictor_indices: list[int],
         threshold: float = 0.5,
-        epochs: int = 100,
-        batch_size: int = 10,
+        epochs: int = 50,
+        batch_size: int = 32,
     ):
         self.predictor_indices = predictor_indices
         self.scaler = MinMaxScaler()
