@@ -4,12 +4,12 @@ import time
 import json
 import sys
 import random
-from typing import Callable
 
 from ..hyperparams.hyperparam_optimization import HyperparamOptimizer
 from ..classifiers.classifier_interface import Classifier
 from ..counterfactual_generator import CounterfactualGenerator
 from ..imputer import Imputer
+from ..utils.misc_utils import get_example_df, get_missing_indices_for_multiple_missing_values
 from ..utils.data_utils import (
     Config,
     get_indices_with_missing_values,
@@ -63,12 +63,11 @@ class CounterfactualEvaluator:
         )
 
     def _evaluate_counterfactuals(
-        self, counterfactuals: np.array, prediction_func: Callable
+        self, counterfactuals: np.array
     ) -> dict[str, np.array]:
         """Return evaluation metrics for a set of counterfactuals.
 
         :param np.array counterfactuals: set of counterfactuals
-        :param Callable prediction_func: classifier prediction function
         :return dict[str, np.array]: dict where key is metric name and value is metric value
         """
         n_cfs = len(counterfactuals)
@@ -109,21 +108,17 @@ class CounterfactualEvaluator:
         }
 
     def _introduce_missing_values_to_test_instance(self):
-        """Randomly change values in test instance to nan.
+        """Change specified value(s) in test instance to nan according to evaluation config params.
 
         :return np.array: test instance with missing value(s)
         """
         test_instance_with_missing_values = self.test_instance_complete_current.copy()
-        if (
-            self.evaluation_config.current_params.num_missing == 1
-            and self.evaluation_config.current_params.ind_missing != "random"
-        ):
+        if self.evaluation_config.current_params.ind_missing != "None":
+            # Single missing value according to specified index
             ind_missing = self.evaluation_config.current_params.ind_missing
-        else:
-            ind_missing = random.sample(
-                range(0, len(test_instance_with_missing_values)),
-                self.evaluation_config.current_params.num_missing,
-            )
+        elif self.evaluation_config.current_params.num_missing != "None":
+            # Multiple missing values, indexes up to num_missing
+            ind_missing = get_missing_indices_for_multiple_missing_values(self.evaluation_config.current_params.num_missing)
         test_instance_with_missing_values[ind_missing] = np.nan
         return test_instance_with_missing_values
 
@@ -174,35 +169,6 @@ class CounterfactualEvaluator:
         wall_time = time_end - time_start
         return counterfactuals, wall_time
 
-    def _get_example_df(self, counterfactuals: np.array) -> pd.DataFrame:
-        """Creates dataframe from one test instance and the counterfactuals
-         generated for it. For qualitative evaluation of counterfactuals.
-
-        :param np.array counterfactuals: counterfactuals
-        :return pd.DataFrame: example df
-        """
-        if len(self.indices_with_missing_values_current) > 0:
-            example_df = np.vstack(
-                (
-                    self.test_instance_complete_current,
-                    self.test_instance_with_missing_values_current,
-                    self.test_instance_imputed_current,
-                    counterfactuals,
-                )
-            )
-            index = ["complete input", "input with missing", "imputed input"]
-        else:
-            example_df = np.vstack(
-                (
-                    self.test_instance_complete_current,
-                    counterfactuals,
-                )
-            )
-            index = ["complete input"]
-
-        for _ in range(len(counterfactuals)):
-            index.append("counterfactual")
-        return pd.DataFrame(example_df, index=index)
 
     def _evaluate_single_instance(
         self, row_ind: int
@@ -230,7 +196,10 @@ class CounterfactualEvaluator:
 
         test_instance_metrics = {}
 
-        if self.evaluation_config.current_params.num_missing > 0:
+        if (
+            self.evaluation_config.current_params.num_missing != "None" and 
+            self.evaluation_config.current_params.num_missing > 0
+        ):
             # Evaluate input with missing values
             self.test_instance_with_missing_values_current = (
                 self._introduce_missing_values_to_test_instance()
@@ -250,11 +219,17 @@ class CounterfactualEvaluator:
             counterfactuals, wall_time = self._get_counterfactuals()
             test_instance_metrics.update({"runtime_seconds": wall_time})
 
-            example_df = self._get_example_df(counterfactuals)
+            example_df = get_example_df(
+                self.indices_with_missing_values_current,
+                self.test_instance_complete_current,
+                self.test_instance_with_missing_values_current,
+                self.test_instance_imputed_current,
+                counterfactuals
+            )
 
             # Evaluate generated counterfactuals vs. original vector
             test_instance_metrics.update(
-                self._evaluate_counterfactuals(counterfactuals, self.classifier.predict)
+                self._evaluate_counterfactuals(counterfactuals)
             )
 
         test_instance_metrics.update(

@@ -29,15 +29,20 @@ class ResultsVisualizer:
     def save_counterfactual_results_visualizations(
         self, all_results_container: EvaluationResultsContainer
     ):
-        if "random" in self.evaluation_config.params.ind_missing:
+        try:
             self._save_imputation_type_results_per_missing_value_count_plot(
                 all_results_container,
                 f"{self.results_dir}/imputation_type_results_per_missing_value_count.png",
             )
-        self._save_imputation_type_results_per_feature_with_missing_value(
-            all_results_container,
-            f"{self.results_dir}/imputation_type_results_per_feature_with_missing_value.png",
-        )
+        except Exception as e:
+            print(f"Error creating counterfactual visualization: {e}")
+        try:
+            self._save_imputation_type_results_per_feature_with_missing_value(
+                all_results_container,
+                f"{self.results_dir}/imputation_type_results_per_feature_with_missing_value.png",
+            )
+        except Exception as e:
+            print(f"Error creating counterfactual visualization: {e}")
 
     def save_data_visualizations(self):
         save_data_histograms(self.data, f"{self.results_dir}/data_hists.png")

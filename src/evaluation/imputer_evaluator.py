@@ -80,6 +80,7 @@ class ImputerEvaluator:
         """Calculates the mean error (difference between actual and imputed value)
         for each feature when using multiple imputation.
 
+        :param int n: number of multiply imputed vectors to create
         :return dict[int, float]: results dict where key is feature index and value is mean error
         """
         multiple_total_errors_per_feature = [0 for x in range(self.test_data.shape[1])]

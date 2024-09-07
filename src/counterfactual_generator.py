@@ -62,7 +62,7 @@ class CounterfactualGenerator:
             continuous_features=predictor_col_names,
         )
         # Suppress some sklearn(?) progress bar that is being output to stderr for some reason
-        self.block_stderr()
+        #self.block_stderr()
         if isinstance(self.classifier.get_classifier(), ClassifierSklearn):
             model = dice_ml.Model(model=self.classifier.get_model(), backend="sklearn")
             exp = dice_ml.Dice(dice_data, model, method="genetic")
@@ -94,7 +94,7 @@ class CounterfactualGenerator:
             raise RuntimeError(
                 f"Expected one of [ClassifierSklearn, ClassifierTensorFlow], got {self.classifier}"
             )
-        self.enable_stderr()
+        #self.enable_stderr()
         return e1.cf_examples_list[0].final_cfs_df.to_numpy()
 
     def _selection_loss_function(
