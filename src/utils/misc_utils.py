@@ -70,24 +70,25 @@ def print_counterfactual_generation_debug_info(
 
     print(f"All k*n explanations:")
     df = pd.DataFrame(explanations)
-    df.loc[-1] = pd.Series(input)
+    df.loc[-1] = pd.Series(input_for_explanations)
     df.index = df.index + 1
     df.sort_index(inplace=True)
     df["sparsity"] = df.apply(
-        lambda row: get_sparsity(row[:-1].to_numpy(), input), axis=1
+        lambda row: get_sparsity(row[:-1].to_numpy(), input_for_explanations), axis=1
     )
     df["distance"] = df[1:].apply(
-        lambda row: get_distance(row[:-2].to_numpy(), input, mads), axis=1
+        lambda row: get_distance(row[:-2].to_numpy(), input_for_explanations, mads), axis=1
     )
     print(df)
+
     print(f"Final k selections:")
     df = pd.DataFrame(final_explanations)
-    df.loc[-1] = pd.Series(input)
+    df.loc[-1] = pd.Series(input_for_explanations)
     df.index = df.index + 1
     df.sort_index(inplace=True)
-    df["sparsity"] = df.apply(lambda row: get_sparsity(row.to_numpy(), input), axis=1)
+    df["sparsity"] = df.apply(lambda row: get_sparsity(row.to_numpy(), input_for_explanations), axis=1)
     df["distance"] = df.apply(
-        lambda row: get_distance(row[:-1].to_numpy(), input, mads), axis=1
+        lambda row: get_distance(row[:-1].to_numpy(), input_for_explanations, mads), axis=1
     )
     print(df)
 
