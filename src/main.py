@@ -5,10 +5,12 @@ from pathlib import Path
 from .evaluation.evaluation_runner import EvaluationRunner
 import warnings
 
+
 # Todo: remove after fixing sklearn UserWarning: X has feature names, but MinMaxScaler was fitted without feature names
 # (maybe fit with pd df)
 def warn(*args, **kwargs):
     pass
+
 
 import warnings
 

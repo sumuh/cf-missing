@@ -87,8 +87,10 @@ class Imputer:
         target_feature: str,
     ) -> np.array:
         raise NotImplementedError
-    
-    def _get_fcs_model_predicted_mu_and_sigma_for_feat(self, feat_i: int, input: np.array) -> tuple[float, float]:
+
+    def _get_fcs_model_predicted_mu_and_sigma_for_feat(
+        self, feat_i: int, input: np.array
+    ) -> tuple[float, float]:
         """Returns predicted mu and sigma for feature with index i.
 
         :param int feat_i: index of feature
@@ -98,7 +100,7 @@ class Imputer:
         estimator = self.fcs_models[feat_i]
         estimator_input = np.delete(input, feat_i)
         return estimator.predict([estimator_input], return_std=True)
-    
+
     def _get_feat_min_max(self, feat_i: int) -> tuple[float, float]:
         return self.min_values[feat_i], self.max_values[feat_i]
 
@@ -119,8 +121,10 @@ class Imputer:
         for _ in range(2):  # two iters?
             # Update each initially missing variable based on its FC model
             for feat_i in indices_with_missing_values:
-                mu, sigma = self._get_fcs_model_predicted_mu_and_sigma_for_feat(feat_i, input)
-                #if self.debug:
+                mu, sigma = self._get_fcs_model_predicted_mu_and_sigma_for_feat(
+                    feat_i, input
+                )
+                # if self.debug:
                 #    print(f"mu: {mu}, sigma: {sigma} for feat {feat_i}")
                 # two types of problems: (1) non-positive sigmas
                 # (2) mus outside legal range of min_value and max_value

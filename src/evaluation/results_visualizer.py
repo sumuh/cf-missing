@@ -44,8 +44,7 @@ class ResultsVisualizer:
         )
 
     def save_data_visualizations(self):
-        """Saves visualizations related to data used.
-        """
+        """Saves visualizations related to data used."""
         save_data_histograms(self.data, f"{self.results_dir}/data_hists.png")
         save_data_boxplots(self.data, f"{self.results_dir}/data_boxplots.png")
 
@@ -114,7 +113,11 @@ class ResultsVisualizer:
             dpi=300,
         )
 
-    def save_imputation_samples_distribution_plot(self, results: dict[int, dict[str, Union[float, np.array]]], result_file_path: str):
+    def save_imputation_samples_distribution_plot(
+        self,
+        results: dict[int, dict[str, Union[float, np.array]]],
+        result_file_path: str,
+    ):
         """Saves plot for the result of imputating a single value for one test row.
         Used for debugging, not for actual evaluation.
 
@@ -126,10 +129,12 @@ class ResultsVisualizer:
             results_for_feat = results[i]
             samples = results_for_feat["samples"]
             for sample in samples:
-                data.append({
-                        "sample_value": sample, 
+                data.append(
+                    {
+                        "sample_value": sample,
                         "feature": self.predictor_names[i],
-                    })
+                    }
+                )
 
         df = pd.DataFrame(data)
 
@@ -154,26 +159,35 @@ class ResultsVisualizer:
             sigma_value = results_for_feat["sigma"]
             a = results_for_feat["a"]
             b = results_for_feat["b"]
-            
-            feature_samples = df[df["feature"] == self.predictor_names[i]]["sample_value"]
+
+            feature_samples = df[df["feature"] == self.predictor_names[i]][
+                "sample_value"
+            ]
             avg_sample_value = feature_samples.mean()
-            
-            ax.axvline(x=mu_value, color="red", linestyle="--", label=f"mu = {mu_value}")
+
+            ax.axvline(
+                x=mu_value, color="red", linestyle="--", label=f"mu = {mu_value}"
+            )
             ax.axvline(x=a, color="black", linestyle="--", label=f"a = {a}")
             ax.axvline(x=b, color="black", linestyle="--", label=f"b = {b}")
-            
-            ax.axvline(x=avg_sample_value, color="blue", linestyle="--", label=f"avg = {avg_sample_value:.2f}")
-            
+
+            ax.axvline(
+                x=avg_sample_value,
+                color="blue",
+                linestyle="--",
+                label=f"avg = {avg_sample_value:.2f}",
+            )
+
             x_min, x_max = ax.get_xlim()
             x_values = np.linspace(x_min, x_max, 100)
-            
+
             y_values = norm.pdf(x_values, loc=mu_value, scale=sigma_value)
-            
+
             y_max = ax.get_ylim()[1]
             y_values_scaled = y_values * (y_max / max(y_values))
-            
+
             ax.plot(x_values, y_values_scaled, color="green", label="Normal Dist.")
-            
+
             ax.yaxis.set_tick_params(labelsize=10)
             ax.set_ylabel(ax.get_ylabel(), fontsize=12)
 
@@ -314,10 +328,7 @@ class ResultsVisualizer:
 
             for imputation_type in all_evaluation_params_dict["imputation_type"]:
                 evaluation_obj = all_results.get_evaluation_for_params(
-                    {
-                        "imputation_type": imputation_type,
-                        "ind_missing": f_ind
-                    }
+                    {"imputation_type": imputation_type, "ind_missing": f_ind}
                 )
                 results_dict = {
                     k: v

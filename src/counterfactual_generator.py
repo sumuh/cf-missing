@@ -13,9 +13,9 @@ from .evaluation.evaluation_metrics import (
     get_distance,
     get_diversity,
     get_average_sparsity,
-    get_sparsity,
 )
 from .utils.data_utils import get_feature_mads
+from .utils.misc_utils import print_counterfactual_generation_debug_info
 
 
 class CounterfactualGenerator:
@@ -261,7 +261,7 @@ class CounterfactualGenerator:
         :param int k: number of explanations to generate
         :param int n: number of imputed vectors to create in multiple imputation
         :param pd.DataFrame data_pd: data
-        :param str method: counterfactual generation method
+        :param str imputation_type: imputation method name
         :return np.array: array with n rows
         """
         imputer = Imputer(X_train, self.hyperparam_opt, True, self.debug)
@@ -275,10 +275,6 @@ class CounterfactualGenerator:
             # Evaluate complete input
             input_for_explanations = input.copy()
 
-        if self.debug:
-            print("input_for_explanations:")
-            print(input_for_explanations)
-
         if input_for_explanations.ndim == 1:
             # Simple imputation was performed OR no missing values in input
             explanations = self._get_explanations_for_single_input(
@@ -290,19 +286,6 @@ class CounterfactualGenerator:
                 input_for_explanations, data_pd, k
             )
 
-        if self.debug:
-            print(f"All k*n explanations:")
-            df = pd.DataFrame(explanations)
-            df.loc[-1] = pd.Series(input)
-            df.index = df.index + 1
-            df.sort_index(inplace=True)
-            df["sparsity"] = df.apply(
-                lambda row: get_sparsity(row[:-1].to_numpy(), input), axis=1
-            )
-            df["distance"] = df[1:].apply(
-                lambda row: get_distance(row[:-2].to_numpy(), input, mads), axis=1
-            )
-            print(df)
         valid_explanations = self._filter_out_non_valid(explanations)
         valid_unique_explanations = self._filter_out_duplicates(valid_explanations)
         if len(valid_unique_explanations) == 0:
@@ -311,16 +294,7 @@ class CounterfactualGenerator:
             valid_unique_explanations[:, :-1], input, k, mads
         )
         if self.debug:
-            print(f"Final k selections:")
-            df = pd.DataFrame(final_explanations)
-            df.loc[-1] = pd.Series(input)
-            df.index = df.index + 1
-            df.sort_index(inplace=True)
-            df["sparsity"] = df.apply(
-                lambda row: get_sparsity(row.to_numpy(), input), axis=1
+            print_counterfactual_generation_debug_info(
+                input_for_explanations, explanations, final_explanations, mads
             )
-            df["distance"] = df.apply(
-                lambda row: get_distance(row[:-1].to_numpy(), input, mads), axis=1
-            )
-            print(df)
         return final_explanations

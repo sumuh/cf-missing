@@ -12,7 +12,9 @@ from ..hyperparams.hyperparam_optimization import HyperparamOptimizer
 class ImputerEvaluator:
     """Class for evaluating imputation methods."""
 
-    def __init__(self, data: pd.DataFrame, hyperparam_opt: HyperparamOptimizer, debug: bool):
+    def __init__(
+        self, data: pd.DataFrame, hyperparam_opt: HyperparamOptimizer, debug: bool
+    ):
         train_data, test_data = train_test_split(data, test_size=0.2, random_state=12)
         self.imputer = Imputer(
             train_data.to_numpy()[:, :-1], hyperparam_opt, True, debug
@@ -45,11 +47,11 @@ class ImputerEvaluator:
                 }
             )
         for n in [100]:
-            samples_distribution = self.evaluate_multiple_imputation_samples_distribution(n)
-            results_dict.update({
-                f"samples_distribution_{n}": samples_distribution
-            })
-        #print(json.dumps(results_dict, indent=2))
+            samples_distribution = (
+                self.evaluate_multiple_imputation_samples_distribution(n)
+            )
+            results_dict.update({f"samples_distribution_{n}": samples_distribution})
+        # print(json.dumps(results_dict, indent=2))
         return results_dict
 
     def evaluate_mean_imputation_for_single_missing_value(self) -> list[float]:
@@ -72,7 +74,9 @@ class ImputerEvaluator:
         )
         return mean_avg_error_per_feature
 
-    def evaluate_multiple_imputation_for_single_missing_value(self, n: int) -> list[float]:
+    def evaluate_multiple_imputation_for_single_missing_value(
+        self, n: int
+    ) -> list[float]:
         """Calculates the mean error (difference between actual and imputed value)
         for each feature when using multiple imputation.
 
@@ -88,28 +92,32 @@ class ImputerEvaluator:
                 multiple_imputed_arr = self.imputer.multiple_imputation(
                     test_input_mis, [i], n
                 )
-                errors_multiple = abs(multiple_imputed_arr[:, i] - test_input[i]) / self.mads[i]
+                errors_multiple = (
+                    abs(multiple_imputed_arr[:, i] - test_input[i]) / self.mads[i]
+                )
                 multiple_total_errors_per_feature[i] += np.mean(errors_multiple)
         multiple_avg_error_per_feature = (
             np.array(multiple_total_errors_per_feature) / self.test_data.shape[0]
         )
         return multiple_avg_error_per_feature
-    
-    def evaluate_multiple_imputation_samples_distribution(self, n: int) -> dict[int, dict[str, Union[float, np.array]]]:
+
+    def evaluate_multiple_imputation_samples_distribution(
+        self, n: int
+    ) -> dict[int, dict[str, Union[float, np.array]]]:
         """Evaluates how sampled values are distributed around mean and std of distribution.
 
         :param int n: number of samples
-        :return dict[int, dict[str, Union[float, np.array]]]: results, key is feature index and dict has values for mu, sigma and samples 
+        :return dict[int, dict[str, Union[float, np.array]]]: results, key is feature index and dict has values for mu, sigma and samples
         """
         results = {}
         test_input = self.test_data[0, :]
         for i in range(test_input.size):
             test_input_mis = test_input.copy()
             test_input_mis[i] = np.nan
-            mu, sigma = self.imputer._get_fcs_model_predicted_mu_and_sigma_for_feat(i, test_input_mis)
-            samples = self.imputer.multiple_imputation(
-                test_input_mis, [i], n
-            )[:, i]
+            mu, sigma = self.imputer._get_fcs_model_predicted_mu_and_sigma_for_feat(
+                i, test_input_mis
+            )
+            samples = self.imputer.multiple_imputation(test_input_mis, [i], n)[:, i]
             results[i] = {}
             results[i]["mu"] = mu
             results[i]["sigma"] = sigma
@@ -118,7 +126,6 @@ class ImputerEvaluator:
             results[i]["a"] = a
             results[i]["b"] = b
         return results
-        
 
     # def evaluate_mean_imputation_multiple_missing_values(self):
     #    total_errors_per_feature = [0 for 0 in range(self.test_data.shape[1])]

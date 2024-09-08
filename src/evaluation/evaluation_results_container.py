@@ -87,7 +87,7 @@ class EvaluationResultsContainer:
 
     def get_data_metrics(self) -> dict:
         return self.data_metrics
-    
+
     def set_runtime(self, runtime: float):
         self.runtime = runtime
 
