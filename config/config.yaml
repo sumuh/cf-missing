@@ -67,8 +67,8 @@ evaluation:
       None
 
   debug:
-    True
-    #False
+    #True
+    False
 
   save_results:
     True

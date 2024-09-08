@@ -1,8 +1,4 @@
 import json
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from pathlib import Path
 from ..utils.data_utils import Config, get_str_from_dict
 
 
@@ -57,9 +53,9 @@ class SingleEvaluationResultsContainer:
 
 class EvaluationResultsContainer:
 
-    def __init__(self, all_evaluation_params_dict: dict[str, list]):
+    def __init__(self, all_evaluation_params: Config):
         self.evaluations = []
-        self.all_evaluation_params_dict = all_evaluation_params_dict
+        self.all_evaluation_params = all_evaluation_params
 
     def add_evaluation(self, evaluation: SingleEvaluationResultsContainer):
         self.evaluations.append(evaluation)
@@ -80,8 +76,11 @@ class EvaluationResultsContainer:
                 return evaluation
         raise RuntimeError(f"Did not find evaluation for params {param_dict}")
 
-    def get_all_evaluation_params_dict(self):
-        return self.all_evaluation_params_dict
+    def get_all_evaluation_params(self) -> Config:
+        return self.all_evaluation_params
+
+    def get_all_evaluation_params_dict(self) -> dict:
+        return self.all_evaluation_params.get_dict()
 
     def set_data_metrics(self, data_metrics: dict):
         self.data_metrics = data_metrics
@@ -97,7 +96,7 @@ class EvaluationResultsContainer:
 
     def save_stats_to_file(self, file_path: str):
         with open(file_path, "w") as file:
-            config_dict = self.all_evaluation_params_dict
+            config_dict = self.get_all_evaluation_params_dict()
             config_dict.update({"total_runtime": f"{self.get_runtime() / 60} minutes"})
             str_to_write = get_str_from_dict(config_dict, "evaluation parameters")
             file.write(str_to_write)

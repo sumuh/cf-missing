@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
 import seaborn as sns
-import matplotlib.pyplot as plt
+from scipy.stats import norm
+from typing import Union
 from ..evaluation.evaluation_results_container import (
     EvaluationResultsContainer,
 )
@@ -29,33 +30,33 @@ class ResultsVisualizer:
     def save_counterfactual_results_visualizations(
         self, all_results_container: EvaluationResultsContainer
     ):
-        try:
-            self._save_imputation_type_results_per_missing_value_count_plot(
-                all_results_container,
-                f"{self.results_dir}/imputation_type_results_per_missing_value_count.png",
-            )
-        except Exception as e:
-            print(f"Error creating counterfactual visualization: {e}")
-        try:
-            self._save_imputation_type_results_per_feature_with_missing_value(
-                all_results_container,
-                f"{self.results_dir}/imputation_type_results_per_feature_with_missing_value.png",
-            )
-        except Exception as e:
-            print(f"Error creating counterfactual visualization: {e}")
+        """Saves visualizations for counterfactual evaluations.
+
+        :param EvaluationResultsContainer all_results_container: obj with all evaluation results
+        """
+        self._save_imputation_type_results_per_missing_value_count_plot(
+            all_results_container,
+            f"{self.results_dir}/imputation_type_results_per_missing_value_count.png",
+        )
+        self._save_imputation_type_results_per_feature_with_missing_value(
+            all_results_container,
+            f"{self.results_dir}/imputation_type_results_per_feature_with_missing_value.png",
+        )
 
     def save_data_visualizations(self):
+        """Saves visualizations related to data used.
+        """
         save_data_histograms(self.data, f"{self.results_dir}/data_hists.png")
         save_data_boxplots(self.data, f"{self.results_dir}/data_boxplots.png")
 
     def save_imputer_evaluation_results_visualizations(
-        self, imputation_results: dict[str, list]
+        self, imputation_results: dict[str, list], result_file_path: str
     ):
         """Saves plot comparing results of different imputation methods.
 
         :param dict[str, list] imputation_results: key: imputation method name, value: list of average error for each feature
+        :param str result_file_path: file to save plot to
         """
-        # plt.figure(figsize=(2, 3))
 
         data = []
         for feat_ind in range(len(self.data.columns) - 1):
@@ -85,7 +86,6 @@ class ResultsVisualizer:
                 )
 
         df = pd.DataFrame(data)
-        # print(df)
 
         g = sns.catplot(
             data=df,
@@ -107,10 +107,84 @@ class ResultsVisualizer:
             ax.set_xlabel("Predictor with missing value")
 
         g.figure.tight_layout()
-        # plt.subplots_adjust(top=0.9, right=0.9)
 
         g.figure.savefig(
-            f"{self.results_dir}/imputation_results_comparison.png",
+            result_file_path,
+            bbox_inches="tight",
+            dpi=300,
+        )
+
+    def save_imputation_samples_distribution_plot(self, results: dict[int, dict[str, Union[float, np.array]]], result_file_path: str):
+        """Saves plot for the result of imputating a single value for one test row.
+        Used for debugging, not for actual evaluation.
+
+        :param dict[int, dict[str, Union[float, np.array]]] results: dict of results
+        :param str result_file_path: file to save plot to
+        """
+        data = []
+        for i in range(0, len(self.predictor_names)):
+            results_for_feat = results[i]
+            samples = results_for_feat["samples"]
+            for sample in samples:
+                data.append({
+                        "sample_value": sample, 
+                        "feature": self.predictor_names[i],
+                    })
+
+        df = pd.DataFrame(data)
+
+        g = sns.catplot(
+            data=df,
+            x="sample_value",
+            col="feature",
+            palette=get_sns_palette(),
+            ci=None,
+            height=4,
+            aspect=1.5,
+            col_wrap=2,
+            sharey=False,
+            sharex=False,
+        )
+
+        g.figure.subplots_adjust(top=0.85, hspace=0.6)
+
+        for i, ax in enumerate(g.axes.flat):
+            results_for_feat = results[i]
+            mu_value = results_for_feat["mu"]
+            sigma_value = results_for_feat["sigma"]
+            a = results_for_feat["a"]
+            b = results_for_feat["b"]
+            
+            feature_samples = df[df["feature"] == self.predictor_names[i]]["sample_value"]
+            avg_sample_value = feature_samples.mean()
+            
+            ax.axvline(x=mu_value, color="red", linestyle="--", label=f"mu = {mu_value}")
+            ax.axvline(x=a, color="black", linestyle="--", label=f"a = {a}")
+            ax.axvline(x=b, color="black", linestyle="--", label=f"b = {b}")
+            
+            ax.axvline(x=avg_sample_value, color="blue", linestyle="--", label=f"avg = {avg_sample_value:.2f}")
+            
+            x_min, x_max = ax.get_xlim()
+            x_values = np.linspace(x_min, x_max, 100)
+            
+            y_values = norm.pdf(x_values, loc=mu_value, scale=sigma_value)
+            
+            y_max = ax.get_ylim()[1]
+            y_values_scaled = y_values * (y_max / max(y_values))
+            
+            ax.plot(x_values, y_values_scaled, color="green", label="Normal Dist.")
+            
+            ax.yaxis.set_tick_params(labelsize=10)
+            ax.set_ylabel(ax.get_ylabel(), fontsize=12)
+
+            ax.legend(loc="upper right", fontsize=10)
+
+        for ax in g.axes.flat:
+            ax.yaxis.set_tick_params(labelsize=10)
+            ax.set_ylabel(ax.get_ylabel(), fontsize=12)
+
+        g.figure.savefig(
+            result_file_path,
             bbox_inches="tight",
             dpi=300,
         )
@@ -118,6 +192,7 @@ class ResultsVisualizer:
     def _get_pretty_title(self, metric_name: str) -> str:
         """Maps metric name to string representation used in plot title.
 
+        :param str metric_name: metric name used as dict key
         :return str: pretty name
         """
         title_dict = {
@@ -133,28 +208,14 @@ class ResultsVisualizer:
         }
         return title_dict[metric_name]
 
-    def _save_metric_histograms(self, metrics_dict: dict, file_path: str):
-        """Plots histograms of each counterfactual metric and saves image to given path.
-
-        :param str file_path: file path for saving image
-        """
-        sns.set_palette(get_sns_palette())
-        fig, axes = plt.subplots(2, 4, figsize=(19, 15))
-        axes = axes.flatten()
-        for i, (metric_name, metric_values) in enumerate(metrics_dict.items()):
-            sns.histplot(metric_values, bins=30, ax=axes[i])
-            axes[i].set_title(metric_name)
-
-        # Remove empty subplots
-        for j in range(i + 1, len(axes)):
-            fig.delaxes(axes[j])
-
-        plt.tight_layout()
-        plt.savefig(file_path)
-
     def _save_imputation_type_results_per_missing_value_count_plot(
         self, all_results: EvaluationResultsContainer, file_path: str
     ):
+        """Plots metrics of each counterfactual metric per number of missing values.
+
+        :param EvaluationResultsContainer all_results: all results dictionary
+        :param str file_path: path to save plot to
+        """
 
         plot_metrics = [
             "avg_n_vectors",
@@ -171,7 +232,7 @@ class ResultsVisualizer:
         all_evaluation_params_dict = all_results.get_all_evaluation_params_dict()
 
         data = []
-        for m in all_evaluation_params_dict["num_missing"]:
+        for m in range(1, len(self.predictor_names)):
             for imputation_type in all_evaluation_params_dict["imputation_type"]:
                 evaluation_obj = all_results.get_evaluation_for_params(
                     {"imputation_type": imputation_type, "num_missing": m}
@@ -204,7 +265,6 @@ class ResultsVisualizer:
             sharex=False,
         )
 
-        # g.figure.suptitle("Experiment results", fontsize=16)
         g.figure.subplots_adjust(top=0.85, hspace=0.6)
 
         for ax in g.axes.flat:
@@ -222,11 +282,15 @@ class ResultsVisualizer:
             bbox_inches="tight",
             dpi=300,
         )
-        # plt.show()
 
     def _save_imputation_type_results_per_feature_with_missing_value(
         self, all_results: EvaluationResultsContainer, file_path: str
     ):
+        """Plots metrics of each counterfactual metric per feature with missing value.
+
+        :param EvaluationResultsContainer all_results: all results dictionary
+        :param str file_path: path to save plot to
+        """
 
         plot_metrics = [
             "avg_n_vectors",
@@ -243,20 +307,16 @@ class ResultsVisualizer:
 
         data = []
 
-        feat_indices = all_evaluation_params_dict["ind_missing"]
+        feat_indices = [i for i in range(len(self.predictor_names))]
 
         for f_ind in feat_indices:
-            if f_ind == "random":
-                f_name = "random"
-            else:
-                f_name = self.predictor_names[int(f_ind)]
+            f_name = self.predictor_names[int(f_ind)]
 
             for imputation_type in all_evaluation_params_dict["imputation_type"]:
                 evaluation_obj = all_results.get_evaluation_for_params(
                     {
                         "imputation_type": imputation_type,
-                        "ind_missing": f_ind,
-                        "num_missing": 1,
+                        "ind_missing": f_ind
                     }
                 )
                 results_dict = {
@@ -293,7 +353,6 @@ class ResultsVisualizer:
             sharex=False,
         )
 
-        # g.figure.suptitle("Experiment results", fontsize=16)
         g.figure.subplots_adjust(top=0.85, hspace=0.6)
 
         for ax in g.axes.flat:
@@ -319,4 +378,3 @@ class ResultsVisualizer:
             bbox_inches="tight",
             dpi=300,
         )
-        # plt.show()

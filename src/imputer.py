@@ -15,12 +15,12 @@ class Imputer:
         init_multiple_imputation: bool = False,
         debug: bool = False,
     ):
+        self.debug = debug
         if init_multiple_imputation:
             self.fcs_models = self._init_fcs_models(train_data, hyperparam_opt)
             self.min_values = get_feature_min_values(train_data)
             self.max_values = get_feature_max_values(train_data)
         self.feature_means = np.apply_along_axis(np.mean, 0, train_data)
-        self.debug = debug
 
     def _init_fcs_models(
         self, train_data: np.array, hyperparam_opt: HyperparamOptimizer
@@ -35,6 +35,9 @@ class Imputer:
         hyperparam_dicts = hyperparam_opt.get_best_hyperparams_for_imputation_models(
             True
         )
+        if self.debug:
+            print(f"Hyperparam dict:")
+            print(json.dumps(hyperparam_dicts, indent=2))
         for feat_ind in range(train_data.shape[1]):
             hyperparam_dict = hyperparam_dicts[feat_ind]
             mask = np.ones(train_data.shape[1], dtype=bool)
@@ -84,6 +87,20 @@ class Imputer:
         target_feature: str,
     ) -> np.array:
         raise NotImplementedError
+    
+    def _get_fcs_model_predicted_mu_and_sigma_for_feat(self, feat_i: int, input: np.array) -> tuple[float, float]:
+        """Returns predicted mu and sigma for feature with index i.
+
+        :param int feat_i: index of feature
+        :param np.array input: array with all predictors to predict from
+        :return tuple[float, float]: mu, sigma
+        """
+        estimator = self.fcs_models[feat_i]
+        estimator_input = np.delete(input, feat_i)
+        return estimator.predict([estimator_input], return_std=True)
+    
+    def _get_feat_min_max(self, feat_i: int) -> tuple[float, float]:
+        return self.min_values[feat_i], self.max_values[feat_i]
 
     def _fcs_multiple_impute_input(
         self,
@@ -102,24 +119,20 @@ class Imputer:
         for _ in range(2):  # two iters?
             # Update each initially missing variable based on its FC model
             for feat_i in indices_with_missing_values:
-                estimator = self.fcs_models[feat_i]
-                estimator_input = np.delete(input, feat_i)
-                mu, sigma = estimator.predict([estimator_input], return_std=True)
-                if self.debug:
-                    print(f"mu: {mu}, sigma: {sigma} for feat {feat_i}")
+                mu, sigma = self._get_fcs_model_predicted_mu_and_sigma_for_feat(feat_i, input)
+                #if self.debug:
+                #    print(f"mu: {mu}, sigma: {sigma} for feat {feat_i}")
                 # two types of problems: (1) non-positive sigmas
                 # (2) mus outside legal range of min_value and max_value
                 # (results in inf sample)
-                min_value = self.min_values[feat_i]
+                min_value, max_value = self._get_feat_min_max(feat_i)
                 max_value = self.max_values[feat_i]
                 if sigma < 0:
                     input[feat_i] = mu
                 elif mu < min_value:
-                    # input[feat_i] = min_value
-                    input[feat_i] = mu
+                    input[feat_i] = min_value
                 elif mu > max_value:
-                    # input[feat_i] = max_value
-                    input[feat_i] = mu
+                    input[feat_i] = max_value
                 else:
                     # Random draws from distribution
                     a = (min_value - mu) / sigma
