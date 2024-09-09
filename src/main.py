@@ -28,6 +28,7 @@ def main():
 
     evaluation_runner = EvaluationRunner(config_file_path, results_dir)
     evaluation_runner.run_evaluations()
+    #evaluation_runner.save_visualizations_from_results_file(f"{current_file_path}/../evaluation_results/08-09-2024/run_08-09-2024-23-32-13/results.txt")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,8 @@ from ..evaluation.evaluation_metrics import (
     get_distance,
     get_sparsity,
 )
+from ..evaluation.evaluation_results_container import EvaluationResultsContainer, SingleEvaluationResultsContainer
+from .data_utils import Config
 
 def get_example_df_for_input_with_missing_values(
     test_instance_complete: np.array,
@@ -102,3 +104,67 @@ def get_missing_indices_for_multiple_missing_values(
     :return list[int]: indices up to num_missing_values
     """
     return [i for i in range(num_missing_values)]
+
+def parse_partial_evaluation_results_object_from_file(
+        file_path: str
+) -> EvaluationResultsContainer:
+    """Returns evaluation results container object based on results saved to file.
+    Purpose is to be able to make visualizations on previous runs.
+
+    :param str file_path: path to results.txt or cf_rolling_results.txt
+    :return EvaluationResultsContainer: results container with file contents parsed
+    """
+    params_list = []
+    results_list = []
+    current_section = None
+    current_dict = {}
+    unique_params = {}
+
+    with open(file_path, "r") as file:
+        for line in file:
+            line = line.strip()
+            
+            if line == "PARAMS":
+                if current_dict:
+                    if current_section == "RESULTS":
+                        results_list.append(current_dict)
+                    elif current_section == "PARAMS":
+                        params_list.append(current_dict)
+                current_section = "PARAMS"
+                current_dict = {}
+
+            elif line == "RESULTS":
+                if current_dict:
+                    params_list.append(current_dict)
+                current_section = "RESULTS"
+                current_dict = {}
+
+            elif line and current_section:
+                key, value = line.split("\t")
+                try:
+                    value = int(value)
+                except ValueError:
+                    try:
+                        value = float(value)
+                    except ValueError:
+                        pass
+                current_dict[key] = value
+
+                if current_section == "PARAMS":
+                    if key not in unique_params:
+                        unique_params[key] = []
+                    if value not in unique_params[key]:
+                        unique_params[key].append(value)
+
+        if current_section == "RESULTS":
+            results_list.append(current_dict)
+        elif current_section == "PARAMS":
+            params_list.append(current_dict)
+
+    container_all = EvaluationResultsContainer(Config(unique_params))
+    for i in range(len(params_list)):
+        container = SingleEvaluationResultsContainer(Config(params_list[i]))
+        container.set_counterfactual_metrics(results_list[i])
+        container_all.add_evaluation(container)
+
+    return container_all

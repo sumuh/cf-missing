@@ -12,6 +12,7 @@ from ..utils.visualization_utils import (
     save_data_histograms,
 )
 from ..utils.data_utils import Config
+from ..utils.misc_utils import parse_partial_evaluation_results_object_from_file
 
 
 class ResultsVisualizer:
@@ -20,12 +21,18 @@ class ResultsVisualizer:
         self,
         data: pd.DataFrame,
         results_dir: str,
-        evaluation_config: Config,
     ):
         self.data = data
         self.results_dir = results_dir
-        self.evaluation_config = evaluation_config
         self.predictor_names = self.data.columns.to_list()[:-1]
+
+    def save_counterfactual_results_visualizations_from_file(self, file_path: str):
+        """Saves visualization based on results file.
+
+        :param str file_path: path to results.txt or cf_rolling_results.txt file
+        """
+        all_results = parse_partial_evaluation_results_object_from_file(file_path)
+        self.save_counterfactual_results_visualizations(all_results)
 
     def save_counterfactual_results_visualizations(
         self, all_results_container: EvaluationResultsContainer

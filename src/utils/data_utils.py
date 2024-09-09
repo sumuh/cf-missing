@@ -207,7 +207,6 @@ def get_str_from_dict(dict_to_save: dict, dict_name: str) -> str:
     :param str dict_name: name of dictionary
     :return str: string representation of dict name and contents
     """
-    s = "-"
-    title = f"{s*12} {dict_name} {s*12}\n"
+    title = f"{dict_name}\n"
     content = "\n".join([f"{item[0]}\t{item[1]}" for item in dict_to_save.items()])
     return title + content

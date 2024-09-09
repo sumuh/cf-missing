@@ -95,7 +95,7 @@ class CounterfactualGenerator:
                 f"Expected one of [ClassifierSklearn, ClassifierTensorFlow], got {self.classifier}"
             )
         self.enable_stderr()
-        return e1.cf_examples_list[0].final_cfs_df.to_numpy()
+        return e1.cf_examples_list[0].final_cfs_df_sparse.to_numpy()
 
     def _selection_loss_function(
         self,
@@ -209,16 +209,28 @@ class CounterfactualGenerator:
         return imputed
 
     def _get_explanations_for_single_input(
-        self, imputed_input: np.array, data_pd: pd.DataFrame, k: int
+        self, imputed_input: np.array, data_pd: pd.DataFrame, k: int, n: int
     ) -> np.array:
         """Returns counterfactual explanations given a single input.
 
         :param np.array imputed_input: input
         :param pd.DataFrame data_pd: data
-        :param int k: how many counterfactuals to generate
+        :param int k: how many counterfactuals to generate per call
+        :param int n: how many times to call counterfactual generation
         :return np.array: counterfactual array of size k
         """
-        return self._get_dice_counterfactuals(imputed_input, data_pd, k)
+        explanations = None
+        for _ in range(n):
+            if explanations is None:
+                explanations = self._get_dice_counterfactuals(imputed_input, data_pd, k)
+            else:
+                explanations = np.vstack(
+                    (
+                        explanations,
+                        self._get_dice_counterfactuals(imputed_input, data_pd, k),
+                    )
+                )
+        return explanations
 
     def _get_explanations_for_multiple_inputs(
         self, imputed_inputs: np.array, data_pd: pd.DataFrame, k: int
@@ -278,7 +290,7 @@ class CounterfactualGenerator:
         if input_for_explanations.ndim == 1:
             # Simple imputation was performed OR no missing values in input
             explanations = self._get_explanations_for_single_input(
-                input_for_explanations, data_pd, k
+                input_for_explanations, data_pd, k, n
             )
         else:
             # Multiple imputation was performed

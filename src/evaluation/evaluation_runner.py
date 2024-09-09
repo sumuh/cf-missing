@@ -54,7 +54,7 @@ class EvaluationRunner:
         """
 
         results_container = SingleEvaluationResultsContainer(
-            current_evaluation_config, self.data
+            current_evaluation_config.current_params
         )
         classifier = Classifier(
             current_evaluation_config.current_params.classifier,
@@ -110,9 +110,6 @@ class EvaluationRunner:
 
         evaluation_results_obj = self.run_counterfactual_evaluation_with_config(
             Config(current_evaluation_config_dict),
-        )
-        evaluation_results_obj.set_evaluation_params_dict(
-            current_evaluation_config_dict["current_params"]
         )
         # Save results in file after each single evaluation in case of run failure
         evaluation_results_obj.append_results_to_file(self.rolling_results_file)
@@ -197,7 +194,7 @@ class EvaluationRunner:
         data_raw = load_data(self.data_config.file_path, self.data_config.separator)
         self.data = transform_data(data_raw, self.data_config)
         # For testing
-        # self.data = self.data[:75]
+        #self.data = self.data[:75]
         # explore_data(self.data)
 
         # Find best hyperparameters for models
@@ -208,22 +205,28 @@ class EvaluationRunner:
         cf_results.save_all_results_to_file(f"{self.results_dir}/results.txt")
 
         # Evaluate imputation methods
-        imputer_evaluator = ImputerEvaluator(
-            self.data, self.hyperparam_opt, self.evaluation_config.debug
-        )
-        imputer_results = imputer_evaluator.run_imputer_evaluation()
+        #imputer_evaluator = ImputerEvaluator(
+        #    self.data, self.hyperparam_opt, self.evaluation_config.debug
+        #)
+        #imputer_results = imputer_evaluator.run_imputer_evaluation()
 
         # Save result visualizations
         results_visualizer = ResultsVisualizer(
-            self.data, self.results_dir, self.evaluation_config
+            self.data, self.results_dir
         )
         results_visualizer.save_counterfactual_results_visualizations(cf_results)
-        results_visualizer.save_imputer_evaluation_results_visualizations(
-            imputer_results["avg_errors"],
-            f"{self.results_dir}/imputation_results_comparison.png",
-        )
-        results_visualizer.save_imputation_samples_distribution_plot(
-            imputer_results["samples_distribution_100"],
-            f"{self.results_dir}/imputation_samples_distribution_100.png",
-        )
+        #results_visualizer.save_imputer_evaluation_results_visualizations(
+        #    imputer_results["avg_errors"],
+        #    f"{self.results_dir}/imputation_results_comparison.png",
+        #)
+        #results_visualizer.save_imputation_samples_distribution_plot(
+        #    imputer_results["samples_distribution_100"],
+        #    f"{self.results_dir}/imputation_samples_distribution_100.png",
+        #)
         results_visualizer.save_data_visualizations()
+
+    def save_visualizations_from_results_file(self, file_path: str):
+        results_visualizer = ResultsVisualizer(
+            load_data(self.data_config.file_path, self.data_config.separator), self.results_dir
+        )
+        results_visualizer.save_counterfactual_results_visualizations_from_file(file_path)

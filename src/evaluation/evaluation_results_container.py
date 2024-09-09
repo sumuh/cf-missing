@@ -8,21 +8,11 @@ class SingleEvaluationResultsContainer:
     Has utils for saving and displaying results.
     """
 
-    def __init__(self, evaluation_config, data_pd):
-        self.evaluation_config = evaluation_config
-        self.data_pd = data_pd
+    def __init__(self, params: Config):
+        self.params = params
 
-    def set_evaluation_params_dict(self, params_dict: dict):
-        self.evaluation_params_dict = params_dict
-
-    def get_evaluation_params_dict(self):
-        return self.evaluation_params_dict
-
-    def get_data_config(self):
-        return self.data_config
-
-    def get_evaluation_config(self):
-        return self.evaluation_config
+    def get_params(self):
+        return self.params
 
     def set_classifier_metrics(self, classifier_metrics: dict):
         self.classifier_metrics = classifier_metrics
@@ -44,11 +34,11 @@ class SingleEvaluationResultsContainer:
 
     def append_results_to_file(self, file_path: str):
         params_str = get_str_from_dict(
-            self.evaluation_config.get_dict()["current_params"], "evaluation parameters"
+            self.params.get_dict(), "PARAMS"
         )
-        results_str = get_str_from_dict(self.counterfactual_metrics, "results")
+        results_str = get_str_from_dict(self.counterfactual_metrics, "RESULTS")
         with open(file_path, "a") as file:
-            file.write(params_str + "\n" + results_str + "\n\n")
+            file.write(params_str + "\n" + results_str + "\n")
 
 
 class EvaluationResultsContainer:
@@ -67,7 +57,7 @@ class EvaluationResultsContainer:
         matches = False
         for evaluation in self.evaluations:
             for k, v in param_dict.items():
-                if evaluation.get_evaluation_params_dict()[k] == v:
+                if evaluation.get_params().get_dict()[k] == v:
                     matches = True
                 else:
                     matches = False
@@ -98,7 +88,7 @@ class EvaluationResultsContainer:
         with open(file_path, "w") as file:
             config_dict = self.get_all_evaluation_params_dict()
             config_dict.update({"total_runtime": f"{self.get_runtime() / 60} minutes"})
-            str_to_write = get_str_from_dict(config_dict, "evaluation parameters")
+            str_to_write = get_str_from_dict(config_dict, "PARAMS")
             file.write(str_to_write)
 
     def save_all_results_to_file(self, file_path: str):
