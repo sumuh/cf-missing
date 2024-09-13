@@ -35,9 +35,6 @@ class Imputer:
         hyperparam_dicts = hyperparam_opt.get_best_hyperparams_for_imputation_models(
             True
         )
-        if self.debug:
-            print(f"Hyperparam dict:")
-            print(json.dumps(hyperparam_dicts, indent=2))
         for feat_ind in range(train_data.shape[1]):
             hyperparam_dict = hyperparam_dicts[feat_ind]
             mask = np.ones(train_data.shape[1], dtype=bool)

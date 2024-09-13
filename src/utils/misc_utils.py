@@ -5,8 +5,12 @@ from ..evaluation.evaluation_metrics import (
     get_distance,
     get_sparsity,
 )
-from ..evaluation.evaluation_results_container import EvaluationResultsContainer, SingleEvaluationResultsContainer
+from ..evaluation.evaluation_results_container import (
+    EvaluationResultsContainer,
+    SingleEvaluationResultsContainer,
+)
 from .data_utils import Config
+
 
 def get_example_df_for_input_with_missing_values(
     test_instance_complete: np.array,
@@ -79,7 +83,8 @@ def print_counterfactual_generation_debug_info(
         lambda row: get_sparsity(row[:-1].to_numpy(), input_for_explanations), axis=1
     )
     df["distance"] = df[1:].apply(
-        lambda row: get_distance(row[:-2].to_numpy(), input_for_explanations, mads), axis=1
+        lambda row: get_distance(row[:-2].to_numpy(), input_for_explanations, mads),
+        axis=1,
     )
     print(df)
 
@@ -88,9 +93,12 @@ def print_counterfactual_generation_debug_info(
     df.loc[-1] = pd.Series(input_for_explanations)
     df.index = df.index + 1
     df.sort_index(inplace=True)
-    df["sparsity"] = df.apply(lambda row: get_sparsity(row.to_numpy(), input_for_explanations), axis=1)
+    df["sparsity"] = df.apply(
+        lambda row: get_sparsity(row.to_numpy(), input_for_explanations), axis=1
+    )
     df["distance"] = df.apply(
-        lambda row: get_distance(row[:-1].to_numpy(), input_for_explanations, mads), axis=1
+        lambda row: get_distance(row[:-1].to_numpy(), input_for_explanations, mads),
+        axis=1,
     )
     print(df)
 
@@ -105,8 +113,9 @@ def get_missing_indices_for_multiple_missing_values(
     """
     return [i for i in range(num_missing_values)]
 
+
 def parse_partial_evaluation_results_object_from_file(
-        file_path: str
+    file_path: str,
 ) -> EvaluationResultsContainer:
     """Returns evaluation results container object based on results saved to file.
     Purpose is to be able to make visualizations on previous runs.
@@ -123,7 +132,7 @@ def parse_partial_evaluation_results_object_from_file(
     with open(file_path, "r") as file:
         for line in file:
             line = line.strip()
-            
+
             if line == "PARAMS":
                 if current_dict:
                     if current_section == "RESULTS":

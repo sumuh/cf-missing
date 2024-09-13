@@ -30,8 +30,6 @@ class EvaluationRunner:
         self.hyperparam_opt = HyperparamOptimizer()
         self.debug = config_all.evaluation.debug
         self.rolling_results_file = f"{results_dir}/cf_rolling_results.txt"
-        self.params_to_vary = self.evaluation_config.params
-        self.params_to_vary_names = self.evaluation_config.params.get_dict().keys()
         self.time_start = time.time()
 
     def load_config(self, config_file_path: str) -> dict:
@@ -78,31 +76,19 @@ class EvaluationRunner:
 
     def run_single_evaluation(
         self,
-        param_combination: tuple,
-        type: str,
+        params: dict[str, any],
     ):
         """Runs evaluation for specified parameters.
 
-        :param tuple param_combination: combination of params to evaluate with
-        :param str type: evaluation type
+        :param dict[str, any] params: dictionary of params to evaluate with
         :return SingleEvaluationResultsContainer: object containing evaluation results for this run
         """
-        current_params_dict = dict(zip(self.params_to_vary_names, param_combination))
-        extra_param = param_combination[len(param_combination) - 1]
+        print("current_params_dict")
+        print(json.dumps(params, indent=2))
         # Set current_params as the current combinations
         current_evaluation_config_dict = self.evaluation_config.get_dict().copy()
-        for k, v in current_params_dict.items():
+        for k, v in params.items():
             current_evaluation_config_dict["current_params"][k] = v
-            if type == "one_by_one":
-                current_evaluation_config_dict["current_params"][
-                    "ind_missing"
-                ] = extra_param
-                current_evaluation_config_dict["current_params"]["num_missing"] = None
-            elif type == "increasing_index":
-                current_evaluation_config_dict["current_params"][
-                    "num_missing"
-                ] = extra_param
-                current_evaluation_config_dict["current_params"]["ind_missing"] = None
 
         if self.debug:
             print("current_evaluation_config_dict")
@@ -120,6 +106,50 @@ class EvaluationRunner:
         )
         return evaluation_results_obj
 
+    def _get_param_combinations_to_run(self) -> tuple[list, list]:
+        """Create two separate combinations of params:
+        one for runs where single index is set to missing at a time,
+        and one for runs where multiple indices are set to missing at a time.
+
+        :return tuple[list, list]: param combinations for single missing value runs, param combinations for multiple missing values run
+        """
+        param_lists = [
+            v
+            for k, v in self.evaluation_config.params.get_dict().items()
+            if k not in ["ind_missing", "num_missing"]
+        ]
+        param_combinations_one_by_one_run = list(itertools.product(*param_lists))
+        param_combinations_increasing_index_run = list(itertools.product(*param_lists))
+
+        if self.evaluation_config.params.ind_missing is not None:
+            ind_missing = list(
+                itertools.product(self.evaluation_config.params.ind_missing)
+            )
+        else:
+            ind_missing = []
+
+        ind_missing_all_product = itertools.product(
+            param_combinations_one_by_one_run, ind_missing
+        )
+        ind_missing_all_combs = [
+            tuple_1 + tuple_2 for tuple_1, tuple_2 in ind_missing_all_product
+        ]
+
+        if self.evaluation_config.params.num_missing is not None:
+            num_missing = list(
+                itertools.product(self.evaluation_config.params.num_missing)
+            )
+        else:
+            num_missing = []
+
+        num_missing_all_product = itertools.product(
+            param_combinations_increasing_index_run, num_missing
+        )
+        num_missing_all_combs = [
+            tuple_1 + tuple_2 for tuple_1, tuple_2 in num_missing_all_product
+        ]
+        return ind_missing_all_combs, num_missing_all_combs
+
     def run_counterfactual_evaluation_with_different_configs(
         self,
     ) -> EvaluationResultsContainer:
@@ -131,55 +161,61 @@ class EvaluationRunner:
         time_start = time.time()
 
         # Object to store all evaluation results in
-        all_results_container = EvaluationResultsContainer(self.params_to_vary)
-        lists = self.params_to_vary.get_dict().values()
-        param_combinations_one_by_one_run = list(itertools.product(*lists))
-        param_combinations_increasing_index_run = list(itertools.product(*lists))
+        all_results_container = EvaluationResultsContainer(
+            self.evaluation_config.params
+        )
+
+        ind_missing_all_combs, num_missing_all_combs = (
+            self._get_param_combinations_to_run()
+        )
+
+        if len(ind_missing_all_combs) > 0 and len(num_missing_all_combs) > 0:
+            total_combinations = len(ind_missing_all_combs) + len(num_missing_all_combs)
+        elif len(ind_missing_all_combs) > 0:
+            total_combinations = len(ind_missing_all_combs)
+        elif len(num_missing_all_combs) > 0:
+            total_combinations = len(num_missing_all_combs)
 
         iteration = 1
-        ind_missing = list(
-            itertools.product([i for i in range(self.data.shape[1] - 1)])
-        )
-        ind_missing_all_product = itertools.product(
-            param_combinations_one_by_one_run, ind_missing
-        )
-        ind_missing_all_combs = [
-            tuple_1 + tuple_2 for tuple_1, tuple_2 in ind_missing_all_product
-        ]
-
-        num_missing = list(
-            itertools.product([i for i in range(self.data.shape[1] - 1)])
-        )
-        num_missing_all_product = itertools.product(
-            param_combinations_increasing_index_run, num_missing
-        )
-        num_missing_all_combs = [
-            tuple_1 + tuple_2 for tuple_1, tuple_2 in num_missing_all_product
-        ]
-
-        total_combinations = len(ind_missing_all_combs) + len(num_missing_all_combs)
-
-        print(
-            "Running evaluation for missing values so that each feature is missing at a time"
-        )
-        for param_combination in ind_missing_all_combs:
-            print(f"Running evaluation {iteration}/{total_combinations}")
-            if self.debug:
-                print(f"param combination: {param_combination}")
-            iteration += 1
-            all_results_container.add_evaluation(
-                self.run_single_evaluation(param_combination, "one_by_one")
+        if len(ind_missing_all_combs) > 0:
+            print(
+                "Running evaluation for missing values so that each feature is missing at a time"
             )
+            for param_combination in ind_missing_all_combs:
+                print(f"Running evaluation {iteration}/{total_combinations}")
+                if self.debug:
+                    print(f"param combination: {param_combination}")
+                iteration += 1
+                param_dict = {
+                    "classifier": param_combination[0],
+                    "imputation_type": param_combination[1],
+                    "n": param_combination[2],
+                    "k": param_combination[3],
+                    "ind_missing": param_combination[4],
+                    "num_missing": None,
+                }
+                all_results_container.add_evaluation(
+                    self.run_single_evaluation(param_dict)
+                )
 
-        print("Running evaluation for increasing number of missing values")
-        for param_combination in num_missing_all_combs:
-            print(f"Running evaluation {iteration}/{total_combinations}")
-            if self.debug:
-                print(f"param combination: {param_combination}")
-            iteration += 1
-            all_results_container.add_evaluation(
-                self.run_single_evaluation(param_combination, "increasing_index")
-            )
+        if len(num_missing_all_combs) > 0:
+            print("Running evaluation for increasing number of missing values")
+            for param_combination in num_missing_all_combs:
+                print(f"Running evaluation {iteration}/{total_combinations}")
+                if self.debug:
+                    print(f"param combination: {param_combination}")
+                iteration += 1
+                param_dict = {
+                    "classifier": param_combination[0],
+                    "imputation_type": param_combination[1],
+                    "n": param_combination[2],
+                    "k": param_combination[3],
+                    "ind_missing": None,
+                    "num_missing": param_combination[4],
+                }
+                all_results_container.add_evaluation(
+                    self.run_single_evaluation(param_dict)
+                )
 
         time_end = time.time()
         total_time_min = round((time_end - time_start) / 60, 1)
@@ -194,7 +230,7 @@ class EvaluationRunner:
         data_raw = load_data(self.data_config.file_path, self.data_config.separator)
         self.data = transform_data(data_raw, self.data_config)
         # For testing
-        #self.data = self.data[:75]
+        self.data = self.data[:75]
         # explore_data(self.data)
 
         # Find best hyperparameters for models
@@ -205,28 +241,29 @@ class EvaluationRunner:
         cf_results.save_all_results_to_file(f"{self.results_dir}/results.txt")
 
         # Evaluate imputation methods
-        #imputer_evaluator = ImputerEvaluator(
+        # imputer_evaluator = ImputerEvaluator(
         #    self.data, self.hyperparam_opt, self.evaluation_config.debug
-        #)
-        #imputer_results = imputer_evaluator.run_imputer_evaluation()
+        # )
+        # imputer_results = imputer_evaluator.run_imputer_evaluation()
 
         # Save result visualizations
-        results_visualizer = ResultsVisualizer(
-            self.data, self.results_dir
-        )
+        results_visualizer = ResultsVisualizer(self.data, self.results_dir)
         results_visualizer.save_counterfactual_results_visualizations(cf_results)
-        #results_visualizer.save_imputer_evaluation_results_visualizations(
+        # results_visualizer.save_imputer_evaluation_results_visualizations(
         #    imputer_results["avg_errors"],
         #    f"{self.results_dir}/imputation_results_comparison.png",
-        #)
-        #results_visualizer.save_imputation_samples_distribution_plot(
+        # )
+        # results_visualizer.save_imputation_samples_distribution_plot(
         #    imputer_results["samples_distribution_100"],
         #    f"{self.results_dir}/imputation_samples_distribution_100.png",
-        #)
+        # )
         results_visualizer.save_data_visualizations()
 
     def save_visualizations_from_results_file(self, file_path: str):
         results_visualizer = ResultsVisualizer(
-            load_data(self.data_config.file_path, self.data_config.separator), self.results_dir
+            load_data(self.data_config.file_path, self.data_config.separator),
+            self.results_dir,
         )
-        results_visualizer.save_counterfactual_results_visualizations_from_file(file_path)
+        results_visualizer.save_counterfactual_results_visualizations_from_file(
+            file_path
+        )

@@ -33,9 +33,7 @@ class SingleEvaluationResultsContainer:
         return self.counterfactual_histogram_dict
 
     def append_results_to_file(self, file_path: str):
-        params_str = get_str_from_dict(
-            self.params.get_dict(), "PARAMS"
-        )
+        params_str = get_str_from_dict(self.params.get_dict(), "PARAMS")
         results_str = get_str_from_dict(self.counterfactual_metrics, "RESULTS")
         with open(file_path, "a") as file:
             file.write(params_str + "\n" + results_str + "\n")

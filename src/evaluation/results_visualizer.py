@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import seaborn as sns
+import matplotlib.pyplot as plt
 from scipy.stats import norm
 from typing import Union
 from ..evaluation.evaluation_results_container import (
@@ -41,19 +42,105 @@ class ResultsVisualizer:
 
         :param EvaluationResultsContainer all_results_container: obj with all evaluation results
         """
-        self._save_imputation_type_results_per_missing_value_count_plot(
-            all_results_container,
-            f"{self.results_dir}/imputation_type_results_per_missing_value_count.png",
-        )
-        self._save_imputation_type_results_per_feature_with_missing_value(
-            all_results_container,
-            f"{self.results_dir}/imputation_type_results_per_feature_with_missing_value.png",
-        )
+        if all_results_container.get_all_evaluation_params().ind_missing is not None:
+            self._save_imputation_type_results_per_feature_with_missing_value(
+                all_results_container,
+                f"{self.results_dir}/imputation_type_results_per_feature_with_missing_value.png",
+            )
+        if all_results_container.get_all_evaluation_params().num_missing is not None:
+            self._save_imputation_type_results_per_missing_value_count_plot(
+                all_results_container,
+                f"{self.results_dir}/imputation_type_results_per_missing_value_count.png",
+            )
+        if len(all_results_container.get_all_evaluation_params().n) > 1:
+            self._save_metrics_for_varying_n_plot(
+                all_results_container,
+                f"{self.results_dir}/metrics_for_varying_n.png",
+            )
 
     def save_data_visualizations(self):
         """Saves visualizations related to data used."""
         save_data_histograms(self.data, f"{self.results_dir}/data_hists.png")
         save_data_boxplots(self.data, f"{self.results_dir}/data_boxplots.png")
+
+    def _save_metrics_for_varying_n_plot(
+        self,
+        all_results: EvaluationResultsContainer,
+        result_file_path: str,
+    ):
+        """Saves plot with counterfactual metrics for different values of n.
+
+        :param EvaluationResultsContainer evaluation_results_container: object with all evaluation results
+        :param str result_file_path: file to save plot to
+        """
+
+        plot_metrics = [
+            "avg_n_vectors",
+            "avg_dist_from_original",
+            "avg_diversity",
+            "avg_count_diversity",
+            "avg_diversity_missing_values",
+            "avg_count_diversity_missing_values",
+            "avg_sparsity",
+            "avg_runtime_seconds",
+        ]
+        all_evaluation_params_dict = all_results.get_all_evaluation_params_dict()
+        data = []
+
+        for n in all_evaluation_params_dict["n"]:
+            evaluation_obj = all_results.get_evaluation_for_params(
+                {"n": n, "imputation_type": "multiple", "num_missing": 3}
+            )
+            results_dict = {
+                k: v
+                for k, v in evaluation_obj.get_counterfactual_metrics().items()
+                if k in plot_metrics
+            }
+            for k, v in results_dict.items():
+                data.append(
+                    {
+                        "n": n,
+                        "metric": k,
+                        "value": v,
+                    }
+                )
+
+        df = pd.DataFrame(data)
+        g = sns.FacetGrid(
+            data=df,
+            col="metric",
+            col_wrap=4,
+            palette=get_sns_palette(),
+            sharex=False,
+            sharey=False,
+        )
+
+        g.map(plt.plot, "n", "value", marker="s", markersize=10)
+        g.set(xticks=all_evaluation_params_dict["n"])
+
+        g.figure.subplots_adjust(top=0.85, hspace=0.6)
+
+        for ax in g.axes.flat:
+            metric_name = ax.get_title().split(" = ")[-1]
+            ax.set_title(self._get_pretty_title(metric_name), fontsize=12)
+            ax.set_ylabel("")
+            ax.set_xlabel("n")
+
+            if not ax.has_data():
+                ax.remove()
+
+        for ax in g.axes.flat:
+            ax.yaxis.set_tick_params(labelsize=10)
+            ax.set_ylabel(ax.get_ylabel(), fontsize=12)
+            ax.set_ylim(ymin=0)
+
+        # g.figure.tight_layout()
+
+        g.figure.savefig(
+            result_file_path,
+            bbox_inches="tight",
+            dpi=300,
+        )
 
     def save_imputer_evaluation_results_visualizations(
         self, imputation_results: dict[str, list], result_file_path: str
@@ -253,7 +340,7 @@ class ResultsVisualizer:
         all_evaluation_params_dict = all_results.get_all_evaluation_params_dict()
 
         data = []
-        for m in range(1, len(self.predictor_names)):
+        for m in all_evaluation_params_dict["num_missing"]:
             for imputation_type in all_evaluation_params_dict["imputation_type"]:
                 evaluation_obj = all_results.get_evaluation_for_params(
                     {"imputation_type": imputation_type, "num_missing": m}
@@ -325,12 +412,9 @@ class ResultsVisualizer:
         ]
 
         all_evaluation_params_dict = all_results.get_all_evaluation_params_dict()
-
         data = []
 
-        feat_indices = [i for i in range(len(self.predictor_names))]
-
-        for f_ind in feat_indices:
+        for f_ind in all_evaluation_params_dict["ind_missing"]:
             f_name = self.predictor_names[int(f_ind)]
 
             for imputation_type in all_evaluation_params_dict["imputation_type"]:
