@@ -3,7 +3,7 @@ import pandas as pd
 
 from ..evaluation.evaluation_metrics import (
     get_distance,
-    get_sparsity,
+    get_average_sparsity,
 )
 from ..evaluation.evaluation_results_container import (
     EvaluationResultsContainer,
@@ -80,7 +80,10 @@ def print_counterfactual_generation_debug_info(
     df.index = df.index + 1
     df.sort_index(inplace=True)
     df["sparsity"] = df.apply(
-        lambda row: get_sparsity(row[:-1].to_numpy(), input_for_explanations), axis=1
+        lambda row: get_average_sparsity(
+            input_for_explanations, np.array([row[:-1].to_numpy()])
+        ),
+        axis=1,
     )
     df["distance"] = df[1:].apply(
         lambda row: get_distance(row[:-2].to_numpy(), input_for_explanations, mads),
@@ -94,7 +97,10 @@ def print_counterfactual_generation_debug_info(
     df.index = df.index + 1
     df.sort_index(inplace=True)
     df["sparsity"] = df.apply(
-        lambda row: get_sparsity(row.to_numpy(), input_for_explanations), axis=1
+        lambda row: get_average_sparsity(
+            input_for_explanations, np.array([row.to_numpy()])
+        ),
+        axis=1,
     )
     df["distance"] = df.apply(
         lambda row: get_distance(row[:-1].to_numpy(), input_for_explanations, mads),
