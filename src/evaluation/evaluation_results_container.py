@@ -1,5 +1,6 @@
 import json
-from ..utils.data_utils import Config, get_str_from_dict
+import yaml
+from ..utils.data_utils import Config
 
 
 class SingleEvaluationResultsContainer:
@@ -33,10 +34,28 @@ class SingleEvaluationResultsContainer:
         return self.counterfactual_histogram_dict
 
     def append_results_to_file(self, file_path: str):
-        params_str = get_str_from_dict(self.params.get_dict(), "PARAMS")
-        results_str = get_str_from_dict(self.counterfactual_metrics, "RESULTS")
-        with open(file_path, "a") as file:
-            file.write(params_str + "\n" + results_str + "\n")
+        with open(file_path, "r") as results_file:
+            current_content = yaml.safe_load(results_file)
+            if "runs" not in current_content:
+                current_content["runs"] = []
+
+        formatted_metrics = self.counterfactual_metrics.copy()
+        for k, v in formatted_metrics.items():
+            if k == "runtimes":
+                for r_k, r_v in v.items():
+                    formatted_metrics["runtimes"][r_k] = float(r_v)
+            else:
+                formatted_metrics[k] = float(v)
+
+        run = {
+            "run": {
+                "run_params": self.params.get_dict(),
+                "run_metrics": formatted_metrics,
+            }
+        }
+        current_content["runs"].append(run)
+        with open(file_path, "w") as file:
+            yaml.dump(current_content, file, default_flow_style=False, sort_keys=False)
 
 
 class EvaluationResultsContainer:
@@ -51,7 +70,7 @@ class EvaluationResultsContainer:
     def get_evaluations(self):
         return self.evaluations
 
-    def get_evaluation_for_params(self, param_dict):
+    def get_evaluation_for_params(self, param_dict) -> SingleEvaluationResultsContainer:
         matches = False
         for evaluation in self.evaluations:
             for k, v in param_dict.items():
@@ -69,26 +88,3 @@ class EvaluationResultsContainer:
 
     def get_all_evaluation_params_dict(self) -> dict:
         return self.all_evaluation_params.get_dict()
-
-    def set_data_metrics(self, data_metrics: dict):
-        self.data_metrics = data_metrics
-
-    def get_data_metrics(self) -> dict:
-        return self.data_metrics
-
-    def set_runtime(self, runtime: float):
-        self.runtime = runtime
-
-    def get_runtime(self) -> float:
-        return self.runtime
-
-    def save_stats_to_file(self, file_path: str):
-        with open(file_path, "w") as file:
-            config_dict = self.get_all_evaluation_params_dict()
-            config_dict.update({"total_runtime": f"{self.get_runtime() / 60} minutes"})
-            str_to_write = get_str_from_dict(config_dict, "PARAMS")
-            file.write(str_to_write)
-
-    def save_all_results_to_file(self, file_path: str):
-        for evaluation in self.evaluations:
-            evaluation.append_results_to_file(file_path)

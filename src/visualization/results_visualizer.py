@@ -13,60 +13,24 @@ from ..utils.visualization_utils import (
     save_data_histograms,
 )
 from ..utils.data_utils import Config
-from ..utils.misc_utils import parse_partial_evaluation_results_object_from_file
+from ..utils.misc_utils import parse_results_file
 
 
 class ResultsVisualizer:
 
-    def __init__(
+    def __init__(self, results_file_path: str, visualizations_dir_path: str):
+        data_stats, results_container = parse_results_file(results_file_path)
+        self.results_container = results_container
+        self.predictor_names = data_stats["column_names"][:-1]
+        self.visualizations_dir_path = visualizations_dir_path
+
+    # def save_data_visualizations(self):
+    #    """Saves visualizations related to data used."""
+    #    save_data_histograms(self.data, f"{self.results_dir}/data_hists.png")
+    #    save_data_boxplots(self.data, f"{self.results_dir}/data_boxplots.png")
+
+    def save_metrics_for_varying_n_plot(
         self,
-        data: pd.DataFrame,
-        results_dir: str,
-    ):
-        self.data = data
-        self.results_dir = results_dir
-        self.predictor_names = self.data.columns.to_list()[:-1]
-
-    def save_counterfactual_results_visualizations_from_file(self, file_path: str):
-        """Saves visualization based on results file.
-
-        :param str file_path: path to results.txt or cf_rolling_results.txt file
-        """
-        all_results = parse_partial_evaluation_results_object_from_file(file_path)
-        self.save_counterfactual_results_visualizations(all_results)
-
-    def save_counterfactual_results_visualizations(
-        self, all_results_container: EvaluationResultsContainer
-    ):
-        """Saves visualizations for counterfactual evaluations.
-
-        :param EvaluationResultsContainer all_results_container: obj with all evaluation results
-        """
-        if all_results_container.get_all_evaluation_params().ind_missing is not None:
-            self._save_imputation_type_results_per_feature_with_missing_value(
-                all_results_container,
-                f"{self.results_dir}/imputation_type_results_per_feature_with_missing_value.png",
-            )
-        if all_results_container.get_all_evaluation_params().num_missing is not None:
-            self._save_imputation_type_results_per_missing_value_count_plot(
-                all_results_container,
-                f"{self.results_dir}/imputation_type_results_per_missing_value_count.png",
-            )
-        if len(all_results_container.get_all_evaluation_params().n) > 1:
-            self._save_metrics_for_varying_n_plot(
-                all_results_container,
-                f"{self.results_dir}/metrics_for_varying_n.png",
-            )
-
-    def save_data_visualizations(self):
-        """Saves visualizations related to data used."""
-        save_data_histograms(self.data, f"{self.results_dir}/data_hists.png")
-        save_data_boxplots(self.data, f"{self.results_dir}/data_boxplots.png")
-
-    def _save_metrics_for_varying_n_plot(
-        self,
-        all_results: EvaluationResultsContainer,
-        result_file_path: str,
     ):
         """Saves plot with counterfactual metrics for different values of n.
 
@@ -84,11 +48,15 @@ class ResultsVisualizer:
             "avg_sparsity",
             "avg_runtime_seconds",
         ]
-        all_evaluation_params_dict = all_results.get_all_evaluation_params_dict()
+        all_evaluation_params_dict = (
+            self.results_container.get_all_evaluation_params_dict()
+        )
         data = []
 
+        print(self.results_container.get_evaluations())
+
         for n in all_evaluation_params_dict["n"]:
-            evaluation_obj = all_results.get_evaluation_for_params(
+            evaluation_obj = self.results_container.get_evaluation_for_params(
                 {"n": n, "imputation_type": "multiple", "num_missing": 3}
             )
             results_dict = {
@@ -137,7 +105,7 @@ class ResultsVisualizer:
         # g.figure.tight_layout()
 
         g.figure.savefig(
-            result_file_path,
+            f"{self.visualizations_dir_path}/metrics_for_varying_n.png",
             bbox_inches="tight",
             dpi=300,
         )
@@ -316,9 +284,7 @@ class ResultsVisualizer:
         }
         return title_dict[metric_name]
 
-    def _save_imputation_type_results_per_missing_value_count_plot(
-        self, all_results: EvaluationResultsContainer, file_path: str
-    ):
+    def save_imputation_type_results_per_missing_value_count_plot(self):
         """Plots metrics of each counterfactual metric per number of missing values.
 
         :param EvaluationResultsContainer all_results: all results dictionary
@@ -337,12 +303,14 @@ class ResultsVisualizer:
             "coverage",
         ]
 
-        all_evaluation_params_dict = all_results.get_all_evaluation_params_dict()
+        all_evaluation_params_dict = (
+            self.results_container.get_all_evaluation_params_dict()
+        )
 
         data = []
         for m in all_evaluation_params_dict["num_missing"]:
             for imputation_type in all_evaluation_params_dict["imputation_type"]:
-                evaluation_obj = all_results.get_evaluation_for_params(
+                evaluation_obj = self.results_container.get_evaluation_for_params(
                     {"imputation_type": imputation_type, "num_missing": m}
                 )
                 results_dict = {
@@ -386,14 +354,12 @@ class ResultsVisualizer:
             ax.set_ylabel(ax.get_ylabel(), fontsize=12)
 
         g.figure.savefig(
-            file_path,
+            f"{self.visualizations_dir_path}/imputation_type_results_per_missing_value_count.png",
             bbox_inches="tight",
             dpi=300,
         )
 
-    def _save_imputation_type_results_per_feature_with_missing_value(
-        self, all_results: EvaluationResultsContainer, file_path: str
-    ):
+    def save_imputation_type_results_per_feature_with_missing_value(self):
         """Plots metrics of each counterfactual metric per feature with missing value.
 
         :param EvaluationResultsContainer all_results: all results dictionary
@@ -411,14 +377,16 @@ class ResultsVisualizer:
             "avg_runtime_seconds",
         ]
 
-        all_evaluation_params_dict = all_results.get_all_evaluation_params_dict()
+        all_evaluation_params_dict = (
+            self.results_container.get_all_evaluation_params_dict()
+        )
         data = []
 
         for f_ind in all_evaluation_params_dict["ind_missing"]:
             f_name = self.predictor_names[int(f_ind)]
 
             for imputation_type in all_evaluation_params_dict["imputation_type"]:
-                evaluation_obj = all_results.get_evaluation_for_params(
+                evaluation_obj = self.results_container.get_evaluation_for_params(
                     {"imputation_type": imputation_type, "ind_missing": f_ind}
                 )
                 results_dict = {
@@ -476,7 +444,46 @@ class ResultsVisualizer:
         g.figure.tight_layout()
 
         g.figure.savefig(
-            file_path,
+            f"{self.visualizations_dir_path}/imputation_type_results_per_feature_with_missing_value.png",
             bbox_inches="tight",
             dpi=300,
+        )
+
+    def save_runtime_distribution_plot(self):
+        evaluation_obj = self.results_container.get_evaluation_for_params(
+            {"imputation_type": "multiple", "num_missing": 3, "n": 5, "k": 3}
+        )
+        names = {
+            "avg_multiple_imputation": "Multiple imputation",
+            "avg_counterfactual_generation": "Counterfactual generation",
+            "avg_filtering": "Filtering",
+            "avg_selection": "Selection",
+        }
+        runtime_results = {
+            k: v
+            for k, v in evaluation_obj.get_counterfactual_metrics()["runtimes"].items()
+            if not k == "avg_total"
+        }
+
+        fig, ax = plt.subplots(figsize=(4, 6))
+        palette = sns.color_palette(get_sns_palette(), len(runtime_results))
+
+        bottom = 0
+        for i, (key, value) in enumerate(runtime_results.items()):
+            ax.bar(
+                " ", value, bottom=bottom, color=palette[i], width=0.5, label=names[key]
+            )
+            bottom += value
+
+        ax.set_ylabel("Runtime (s)")
+        ax.set_title("")
+        ax.legend(
+            title="Items", bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0
+        )
+        # plt.tight_layout(rect=[0, 0, 0.85, 1])
+
+        plt.savefig(
+            f"{self.visualizations_dir_path}/runtime_distribution.png",
+            bbox_inches="tight",
+            dpi=500,
         )

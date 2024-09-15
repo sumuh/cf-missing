@@ -38,39 +38,35 @@ evaluation:
       #- tensorflow 
 
     imputation_type:
-      #- mean
+      - mean
       - multiple
 
     ind_missing:
-      #- 0
-      #- 1
-      #- 2
-      #- 3
-      #- 4
-      #- 5
-      #- 6
-      #- 7
+      - 0
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
 
     num_missing:
-    #  - 1
-    #  - 2
+      - 1
+      - 2
       - 3
-    #  - 4
-    #  - 5
-    #  - 6
-    #  - 7
+      - 4
+      - 5
+      - 6
+      - 7
 
     n:
       - 1
+      - 5
       - 10
       - 20
-      - 30
       - 40
-      - 50
-      - 60
-      - 70
       - 80
-      - 90
       - 100
     k:
       - 3
@@ -98,12 +94,6 @@ evaluation:
     #True
     False
 
-  save_results:
-    True
-
-  show_plots:
-    False
-
   numeric_metrics:
     - n_vectors
     - avg_dist_from_original
@@ -112,11 +102,17 @@ evaluation:
     - diversity_missing_values
     - count_diversity_missing_values
     - avg_sparsity
-    - runtime_seconds
     - num_missing
     
   boolean_metrics:
     - undesired_class
+
+  runtime_metrics:
+    - total
+    - multiple_imputation
+    - counterfactual_generation
+    - filtering
+    - selection
 
   metrics_for_histograms:
     - avg_dist_from_original
@@ -125,4 +121,3 @@ evaluation:
     - diversity_missing_values
     - count_diversity_missing_values
     - avg_sparsity
-    - runtime_seconds

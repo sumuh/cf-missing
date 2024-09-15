@@ -10,12 +10,12 @@ from ..evaluation.evaluation_results_container import (
     SingleEvaluationResultsContainer,
 )
 from ..classifiers.classifier_interface import Classifier
-from ..evaluation.results_visualizer import ResultsVisualizer
 from ..utils.data_utils import (
     Config,
     load_data,
     transform_data,
 )
+from ..utils.misc_utils import write_run_configuration_to_file
 from ..utils.visualization_utils import explore_data
 from ..hyperparams.hyperparam_optimization import HyperparamOptimizer
 
@@ -29,7 +29,6 @@ class EvaluationRunner:
         self.evaluation_config = config_all.evaluation
         self.hyperparam_opt = HyperparamOptimizer()
         self.debug = config_all.evaluation.debug
-        self.rolling_results_file = f"{results_dir}/cf_rolling_results.txt"
         self.time_start = time.time()
 
     def load_config(self, config_file_path: str) -> dict:
@@ -74,10 +73,7 @@ class EvaluationRunner:
 
         return results_container
 
-    def run_single_evaluation(
-        self,
-        params: dict[str, any],
-    ):
+    def run_single_evaluation(self, params: dict[str, any], results_file_path: str):
         """Runs evaluation for specified parameters.
 
         :param dict[str, any] params: dictionary of params to evaluate with
@@ -98,7 +94,7 @@ class EvaluationRunner:
             Config(current_evaluation_config_dict),
         )
         # Save results in file after each single evaluation in case of run failure
-        evaluation_results_obj.append_results_to_file(self.rolling_results_file)
+        evaluation_results_obj.append_results_to_file(results_file_path)
         time_so_far_min = round((time.time() - self.time_start) / 60, 1)
         time_so_far_h = round(time_so_far_min / 60, 1)
         print(
@@ -151,7 +147,7 @@ class EvaluationRunner:
         return ind_missing_all_combs, num_missing_all_combs
 
     def run_counterfactual_evaluation_with_different_configs(
-        self,
+        self, results_file_path: str
     ) -> EvaluationResultsContainer:
         """Runs counterfactual evaluation with different parameters.
 
@@ -163,6 +159,10 @@ class EvaluationRunner:
         # Object to store all evaluation results in
         all_results_container = EvaluationResultsContainer(
             self.evaluation_config.params
+        )
+
+        write_run_configuration_to_file(
+            self.data, self.evaluation_config.params, results_file_path
         )
 
         ind_missing_all_combs, num_missing_all_combs = (
@@ -195,7 +195,7 @@ class EvaluationRunner:
                     "num_missing": None,
                 }
                 all_results_container.add_evaluation(
-                    self.run_single_evaluation(param_dict)
+                    self.run_single_evaluation(param_dict, results_file_path)
                 )
 
         if len(num_missing_all_combs) > 0:
@@ -214,14 +214,13 @@ class EvaluationRunner:
                     "num_missing": param_combination[4],
                 }
                 all_results_container.add_evaluation(
-                    self.run_single_evaluation(param_dict)
+                    self.run_single_evaluation(param_dict, results_file_path)
                 )
 
         time_end = time.time()
         total_time_min = round((time_end - time_start) / 60, 1)
         total_time_h = round(total_time_min / 60, 1)
         print(f"Evaluation done. Took {total_time_min} minutes ({total_time_h} hours)")
-        all_results_container.set_runtime(time_end - time_start)
         return all_results_container
 
     def run_evaluations(self):
@@ -230,40 +229,18 @@ class EvaluationRunner:
         data_raw = load_data(self.data_config.file_path, self.data_config.separator)
         self.data = transform_data(data_raw, self.data_config)
         # For testing
-        self.data = self.data[:75]
+        # self.data = self.data[:75]
         # explore_data(self.data)
 
         # Find best hyperparameters for models
         # self.hyperparam_opt.run_hyperparam_optimization_for_imputation_models(data.to_numpy()[:, :-1])
 
-        cf_results = self.run_counterfactual_evaluation_with_different_configs()
-        cf_results.save_stats_to_file(f"{self.results_dir}/config.txt")
-        cf_results.save_all_results_to_file(f"{self.results_dir}/results.txt")
+        self.run_counterfactual_evaluation_with_different_configs(
+            f"{self.results_dir}/results.yaml"
+        )
 
         # Evaluate imputation methods
         # imputer_evaluator = ImputerEvaluator(
         #    self.data, self.hyperparam_opt, self.evaluation_config.debug
         # )
         # imputer_results = imputer_evaluator.run_imputer_evaluation()
-
-        # Save result visualizations
-        results_visualizer = ResultsVisualizer(self.data, self.results_dir)
-        results_visualizer.save_counterfactual_results_visualizations(cf_results)
-        # results_visualizer.save_imputer_evaluation_results_visualizations(
-        #    imputer_results["avg_errors"],
-        #    f"{self.results_dir}/imputation_results_comparison.png",
-        # )
-        # results_visualizer.save_imputation_samples_distribution_plot(
-        #    imputer_results["samples_distribution_100"],
-        #    f"{self.results_dir}/imputation_samples_distribution_100.png",
-        # )
-        results_visualizer.save_data_visualizations()
-
-    def save_visualizations_from_results_file(self, file_path: str):
-        results_visualizer = ResultsVisualizer(
-            load_data(self.data_config.file_path, self.data_config.separator),
-            self.results_dir,
-        )
-        results_visualizer.save_counterfactual_results_visualizations_from_file(
-            file_path
-        )

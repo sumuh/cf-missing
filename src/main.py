@@ -3,6 +3,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from .evaluation.evaluation_runner import EvaluationRunner
+from .visualization.results_visualizer import ResultsVisualizer
 import warnings
 
 
@@ -17,7 +18,7 @@ import warnings
 warnings.warn = warn
 
 
-def main():
+def run_evaluations(current_file_path: str) -> str:
     current_file_path = os.path.dirname(os.path.realpath(__file__))
     config_file_path = f"{current_file_path}/../config/config.yaml"
     current_time = datetime.now()
@@ -28,7 +29,22 @@ def main():
 
     evaluation_runner = EvaluationRunner(config_file_path, results_dir)
     evaluation_runner.run_evaluations()
-    # evaluation_runner.save_visualizations_from_results_file(f"{current_file_path}/../evaluation_results/08-09-2024/run_08-09-2024-23-32-13/results.txt")
+    return results_dir
+
+
+def make_visualizations(
+    current_file_path: str, results_file_path: str, visualizations_dir_path: str
+):
+    results_visualizer = ResultsVisualizer(results_file_path, visualizations_dir_path)
+    results_visualizer.save_runtime_distribution_plot()
+
+
+def main():
+    current_file_path = os.path.dirname(os.path.realpath(__file__))
+    results_dir = run_evaluations(current_file_path)
+    # results_dir = f"{current_file_path}/../evaluation_results/14-09-2024/run_14-09-2024-20-44-45"
+    # print(results_dir)
+    # make_visualizations(current_file_path, f"{results_dir}/results.yaml", results_dir)
 
 
 if __name__ == "__main__":

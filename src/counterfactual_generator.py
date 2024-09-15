@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import dice_ml
+import time
 import sys, os
 from itertools import combinations
 
@@ -264,7 +265,7 @@ class CounterfactualGenerator:
         n: int,
         data_pd: pd.DataFrame,
         imputation_type: str,
-    ) -> np.array:
+    ) -> tuple[np.array, dict[str, float]]:
         """Generate explanation for input vector(s).
 
         :param np.array input: input array
@@ -274,19 +275,26 @@ class CounterfactualGenerator:
         :param int n: number of imputed vectors to create in multiple imputation
         :param pd.DataFrame data_pd: data
         :param str imputation_type: imputation method name
-        :return np.array: array with n rows
+        :return tuple[np.array, dict[str, float]]: counterfactuals and runtimes of different parts
         """
         imputer = Imputer(X_train, self.hyperparam_opt, True, self.debug)
         mads = get_feature_mads(X_train)
         if len(indices_with_missing_values) > 0:
+            multiple_imputation_start = time.time()
             # Evaluate input with missing values
             input_for_explanations = self._perform_imputation(
                 imputer, imputation_type, input, indices_with_missing_values, n
             )
+            multiple_imputation_end = time.time()
+            multiple_imputation_runtime = (
+                multiple_imputation_end - multiple_imputation_start
+            )
         else:
             # Evaluate complete input
             input_for_explanations = input.copy()
+            multiple_imputation_runtime = 0
 
+        counterfactual_generation_start = time.time()
         if input_for_explanations.ndim == 1:
             # Simple imputation was performed OR no missing values in input
             explanations = self._get_explanations_for_single_input(
@@ -297,16 +305,34 @@ class CounterfactualGenerator:
             explanations = self._get_explanations_for_multiple_inputs(
                 input_for_explanations, data_pd, k
             )
+        counterfactual_generation_end = time.time()
+        counterfactual_generation_runtime = (
+            counterfactual_generation_end - counterfactual_generation_start
+        )
 
+        filtering_start = time.time()
         valid_explanations = self._filter_out_non_valid(explanations)
         valid_unique_explanations = self._filter_out_duplicates(valid_explanations)
+        filtering_end = time.time()
+        filtering_runtime = filtering_end - filtering_start
+
         if len(valid_unique_explanations) == 0:
             return np.array([])
+
+        selection_start = time.time()
         final_explanations = self._perform_final_selection(
             valid_unique_explanations[:, :-1], input, k, mads
         )
+        selection_end = time.time()
+        selection_runtime = selection_end - selection_start
+
         if self.debug:
             print_counterfactual_generation_debug_info(
                 input_for_explanations, explanations, final_explanations, mads
             )
-        return final_explanations
+        return final_explanations, {
+            "multiple_imputation": multiple_imputation_runtime,
+            "counterfactual_generation": counterfactual_generation_runtime,
+            "filtering": filtering_runtime,
+            "selection": selection_runtime,
+        }

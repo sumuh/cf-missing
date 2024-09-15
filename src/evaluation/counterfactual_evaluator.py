@@ -147,12 +147,11 @@ class CounterfactualEvaluator:
             self.indices_with_missing_values_current,
         )
 
-    def _get_counterfactuals(self) -> tuple[np.array, float]:
+    def _get_counterfactuals(self) -> tuple[np.array, dict[str, float]]:
         """Generate counterfactuals.
 
         :return tuple[np.array, float]: set of alternative vectors and generation wall clock time
         """
-        time_start = time.time()
         if len(self.indices_with_missing_values_current) > 0:
             # Evaluate input with missing values
             input = self.test_instance_imputed_current
@@ -160,7 +159,8 @@ class CounterfactualEvaluator:
             # Evaluate complete input
             input = self.test_instance_complete_current
 
-        counterfactuals = self.cf_generator.generate_explanations(
+        time_start = time.time()
+        counterfactuals, runtimes = self.cf_generator.generate_explanations(
             input,
             self.X_train_current,
             self.indices_with_missing_values_current,
@@ -170,18 +170,18 @@ class CounterfactualEvaluator:
             self.evaluation_config.current_params.imputation_type,
         )
         time_end = time.time()
-        wall_time = time_end - time_start
-        return counterfactuals, wall_time
+        runtimes.update({"total": time_end - time_start})
+        return counterfactuals, runtimes
 
     def _evaluate_single_instance(
         self, row_ind: int
-    ) -> tuple[dict[str, float], pd.DataFrame]:
+    ) -> tuple[dict[str, any], pd.DataFrame]:
         """Return metrics for counterfactuals generated for single test instance.
         Introduces potential missing values to test instance, imputes them,
         generates counterfactual and evaluates it.
 
         :param int row_ind: row index of test instance in test data
-        :return tuple[dict[str, float], pd.DataFrame]: metrics for evaluated instance
+        :return tuple[dict[str, any], pd.DataFrame]: metrics for evaluated instance
         and dataframe comparing inputs with counterfactuals
         """
         self.test_instance_complete_current = self._get_test_instance(row_ind)
@@ -219,8 +219,8 @@ class CounterfactualEvaluator:
 
         if prediction != self.data_config.target_class:
             # Generate counterfactuals
-            counterfactuals, wall_time = self._get_counterfactuals()
-            test_instance_metrics.update({"runtime_seconds": wall_time})
+            counterfactuals, runtimes = self._get_counterfactuals()
+            test_instance_metrics.update({"runtimes": runtimes})
             if len(self.indices_with_missing_values_current) > 0:
                 example_df = get_example_df_for_input_with_missing_values(
                     self.test_instance_complete_current,
@@ -264,9 +264,14 @@ class CounterfactualEvaluator:
             k: round(v, 3)
             for k, v in get_averages_from_dict_of_arrays(numeric_metrics).items()
         }
+        runtimes_averages = {
+            k: round(v, 3)
+            for k, v in get_averages_from_dict_of_arrays(metrics["runtimes"]).items()
+        }
         boolean_total_trues = {k: sum(v) for k, v in boolean_metrics.items()}
         final_dict = numeric_averages
         final_dict.update(boolean_total_trues)
+        final_dict.update({"runtimes": runtimes_averages})
         # Add coverage: ratio of test inputs for which at least one cf was found
         num_inputs_cf_found = filter(lambda x: x > 0, metrics["n_vectors"])
         total_inputs_cf_required = metrics["n_vectors"]
@@ -304,7 +309,9 @@ class CounterfactualEvaluator:
             self.evaluation_config.numeric_metrics
             + self.evaluation_config.boolean_metrics
         )
+        runtime_metric_names = self.evaluation_config.runtime_metrics
         metrics = {metric: [] for metric in all_metric_names}
+        metrics["runtimes"] = {metric: [] for metric in runtime_metric_names}
 
         if self.debug:
             show_example = True
@@ -323,7 +330,18 @@ class CounterfactualEvaluator:
                 )
 
             for metric_name, metric_value in single_instance_metrics.items():
-                metrics[metric_name].append(metric_value)
+                if metric_name == "runtimes":
+                    for (
+                        runtime_metric_name,
+                        runtime_metric_value,
+                    ) in metric_value.items():
+                        metrics["runtimes"][runtime_metric_name].append(
+                            runtime_metric_value
+                        )
+                else:
+                    metrics[metric_name].append(metric_value)
+
+            # print(json.dumps(metrics, indent=2))
 
             show_example = debug_info(
                 info_frequency, row_ind, show_example, single_instance_metrics
