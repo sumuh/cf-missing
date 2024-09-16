@@ -5,6 +5,7 @@ from pathlib import Path
 from .evaluation.evaluation_runner import EvaluationRunner
 from .visualization.results_visualizer import ResultsVisualizer
 import warnings
+import random
 
 
 # Todo: remove after fixing sklearn UserWarning: X has feature names, but MinMaxScaler was fitted without feature names
@@ -37,9 +38,13 @@ def make_visualizations(
 ):
     results_visualizer = ResultsVisualizer(results_file_path, visualizations_dir_path)
     results_visualizer.save_runtime_distribution_plot()
+    #results_visualizer.save_metrics_for_varying_n_plot()
+    #results_visualizer.save_imputation_type_results_per_missing_value_count_plot()
+    #results_visualizer.save_imputation_type_results_per_feature_with_missing_value()
 
 
 def main():
+    random.seed(12)
     current_file_path = os.path.dirname(os.path.realpath(__file__))
     results_dir = run_evaluations(current_file_path)
     # results_dir = f"{current_file_path}/../evaluation_results/14-09-2024/run_14-09-2024-20-44-45"

@@ -57,11 +57,14 @@ class CounterfactualEvaluator:
         self.test_instance_with_missing_values_current = None
 
         self.cf_generator = CounterfactualGenerator(
-            self.classifier,
-            data_config.target_class,
-            data_config.target_name,
-            self.hyperparam_opt,
-            self.debug,
+            classifier=self.classifier,
+            target_class=data_config.target_class,
+            target_variable_name=data_config.target_name,
+            hyperparam_opt=self.hyperparam_opt,
+            distance_lambda=self.evaluation_config.current_params.distance_lambda,
+            diversity_lambda=self.evaluation_config.current_params.diversity_lambda,
+            sparsity_lambda=self.evaluation_config.current_params.sparsity_lambda,
+            debug=self.debug,
         )
 
     def _evaluate_counterfactuals(
@@ -90,7 +93,7 @@ class CounterfactualEvaluator:
                 )
                 # Calculate sparsity from imputed test instance
                 avg_sparsity = get_average_sparsity(
-                    self.test_instance_imputed_current, counterfactuals
+                    self.test_instance_complete_current, counterfactuals
                 )
             else:
                 diversity_missing_values = 0

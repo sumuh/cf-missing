@@ -27,12 +27,18 @@ class CounterfactualGenerator:
         target_class: int,
         target_variable_name: str,
         hyperparam_opt: HyperparamOptimizer,
+        distance_lambda: float,
+        diversity_lambda: float,
+        sparsity_lambda: float,
         debug: bool,
     ):
         self.classifier = classifier
         self.target_class = target_class
         self.target_variable_name = target_variable_name
         self.hyperparam_opt = hyperparam_opt
+        self.distance_lambda = distance_lambda
+        self.diversity_lambda = diversity_lambda
+        self.sparsity_lambda = sparsity_lambda
         self.debug = debug
 
     def block_stderr(self):
@@ -73,9 +79,9 @@ class CounterfactualGenerator:
                 ),
                 total_CFs=k,
                 desired_class=self.target_class,
-                proximity_weight=1,
-                diversity_weight=0.5,
-                sparsity_weight=1.5,
+                proximity_weight=self.distance_lambda,
+                diversity_weight=self.diversity_lambda,
+                sparsity_weight=self.sparsity_lambda,
                 verbose=False,
             )
         elif isinstance(self.classifier.get_classifier(), ClassifierTensorFlow):
@@ -103,9 +109,6 @@ class CounterfactualGenerator:
         candidate_counterfactuals: np.array,
         input: np.array,
         mads: np.array,
-        lambda_1: float = 1,
-        lambda_2: float = 0.5,
-        lambda_3: float = 1.5,
     ) -> float:
         """Loss function modified from Mothilal et al. (2020)
         for selecting best set of counterfactuals.
@@ -113,9 +116,6 @@ class CounterfactualGenerator:
         :param np.array candidate_counterfactuals: set of counterfactuals to score
         :param np.array input: original imputed input
         :param np.array mads: mean absolute deviationd for each predictor
-        :param float lambda_1: hyperparam, defaults to 0.5
-        :param float lambda_2: hyperparam, defaults to 1
-        :param float lambda_3: hyperparam, defaults to 1.5
         :return float: value of loss function
         """
         dist_sum = 0
@@ -124,9 +124,9 @@ class CounterfactualGenerator:
         div = get_diversity(candidate_counterfactuals, mads)
         sparsity = get_average_sparsity(input, candidate_counterfactuals)
         return (
-            (lambda_1 / len(candidate_counterfactuals) * dist_sum)
-            - (lambda_2 * div)
-            + (lambda_3 * sparsity)
+            (self.distance_lambda / len(candidate_counterfactuals) * dist_sum)
+            - (self.diversity_lambda * div)
+            - (self.sparsity_lambda * sparsity)
         )
 
     def _perform_final_selection(
@@ -317,7 +317,12 @@ class CounterfactualGenerator:
         filtering_runtime = filtering_end - filtering_start
 
         if len(valid_unique_explanations) == 0:
-            return np.array([])
+            return np.array([]), {
+            "multiple_imputation": multiple_imputation_runtime,
+            "counterfactual_generation": counterfactual_generation_runtime,
+            "filtering": filtering_runtime,
+            "selection": 0,
+        }
 
         selection_start = time.time()
         final_explanations = self._perform_final_selection(

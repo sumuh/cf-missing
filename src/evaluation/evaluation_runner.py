@@ -191,7 +191,10 @@ class EvaluationRunner:
                     "imputation_type": param_combination[1],
                     "n": param_combination[2],
                     "k": param_combination[3],
-                    "ind_missing": param_combination[4],
+                    "distance_lambda": param_combination[4],
+                    "diversity_lambda": param_combination[5],
+                    "sparsity_lambda": param_combination[6],
+                    "ind_missing": param_combination[7],
                     "num_missing": None,
                 }
                 all_results_container.add_evaluation(
@@ -210,8 +213,11 @@ class EvaluationRunner:
                     "imputation_type": param_combination[1],
                     "n": param_combination[2],
                     "k": param_combination[3],
+                    "distance_lambda": param_combination[4],
+                    "diversity_lambda": param_combination[5],
+                    "sparsity_lambda": param_combination[6],
                     "ind_missing": None,
-                    "num_missing": param_combination[4],
+                    "num_missing": param_combination[7],
                 }
                 all_results_container.add_evaluation(
                     self.run_single_evaluation(param_dict, results_file_path)

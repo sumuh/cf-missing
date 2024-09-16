@@ -71,6 +71,15 @@ evaluation:
     k:
       - 3
 
+    distance_lambda:
+      - 1
+
+    diversity_lambda:
+      - 1
+
+    sparsity_lambda:
+      - 1
+
   current_params:
     classifier:
       None
