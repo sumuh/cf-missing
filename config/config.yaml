@@ -99,6 +99,15 @@ evaluation:
     k:
       None
 
+    distance_lambda:
+      None
+
+    diversity_lambda:
+      None
+
+    sparsity_lambda:
+      None
+
   debug:
     #True
     False
