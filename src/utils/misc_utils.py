@@ -45,14 +45,23 @@ def get_example_df_for_input_with_missing_values(
     :param np.array counterfactuals: counterfactuals
     :return pd.DataFrame: example df
     """
-    example_df = np.vstack(
-        (
-            test_instance_complete,
-            test_instance_with_missing_values,
-            test_instance_imputed,
-            counterfactuals,
+    if len(counterfactuals) > 0:
+        example_df = np.vstack(
+            (
+                test_instance_complete,
+                test_instance_with_missing_values,
+                test_instance_imputed,
+                counterfactuals,
+            )
         )
-    )
+    else:
+        example_df = np.vstack(
+            (
+                test_instance_complete,
+                test_instance_with_missing_values,
+                test_instance_imputed,
+            )
+        )
     index = ["complete input", "input with missing", "imputed input"]
 
     for _ in range(len(counterfactuals)):
@@ -72,58 +81,20 @@ def get_example_df_for_complete_input(
     :param np.array counterfactuals: counterfactuals
     :return pd.DataFrame: example df
     """
-    example_df = np.vstack(
-        (
-            test_instance_complete,
-            counterfactuals,
+    if len(counterfactuals) > 0:
+        example_df = np.vstack(
+            (
+                test_instance_complete,
+                counterfactuals,
+            )
         )
-    )
+    else:
+        example_df = test_instance_complete
     index = ["complete input"]
 
     for _ in range(len(counterfactuals)):
         index.append("counterfactual")
     return pd.DataFrame(example_df, index=index)
-
-
-def print_counterfactual_generation_debug_info(
-    input_for_explanations, explanations, final_explanations, mads
-):
-    print("input_for_explanations:")
-    print(input_for_explanations)
-
-    print(f"All k*n explanations:")
-    df = pd.DataFrame(explanations)
-    df.loc[-1] = pd.Series(input_for_explanations)
-    df.index = df.index + 1
-    df.sort_index(inplace=True)
-    df["sparsity"] = df.apply(
-        lambda row: get_average_sparsity(
-            input_for_explanations, np.array([row[:-1].to_numpy()])
-        ),
-        axis=1,
-    )
-    df["distance"] = df[1:].apply(
-        lambda row: get_distance(row[:-2].to_numpy(), input_for_explanations, mads),
-        axis=1,
-    )
-    print(df)
-
-    print(f"Final k selections:")
-    df = pd.DataFrame(final_explanations)
-    df.loc[-1] = pd.Series(input_for_explanations)
-    df.index = df.index + 1
-    df.sort_index(inplace=True)
-    df["sparsity"] = df.apply(
-        lambda row: get_average_sparsity(
-            input_for_explanations, np.array([row.to_numpy()])
-        ),
-        axis=1,
-    )
-    df["distance"] = df.apply(
-        lambda row: get_distance(row[:-1].to_numpy(), input_for_explanations, mads),
-        axis=1,
-    )
-    print(df)
 
 
 def get_missing_indices_for_multiple_missing_values(

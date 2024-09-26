@@ -21,7 +21,6 @@ class ImputerEvaluator:
         )
         self.test_data = test_data.to_numpy()[:, :-1]
         self.mads = get_feature_mads(train_data.to_numpy()[:, :-1])
-        self.debug = debug
 
     def run_imputer_evaluation(self) -> dict:
         """Run evaluation for all imputation methods.

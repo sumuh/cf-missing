@@ -18,18 +18,19 @@ from ..utils.data_utils import (
 from ..utils.misc_utils import write_run_configuration_to_file
 from ..utils.visualization_utils import explore_data
 from ..hyperparams.hyperparam_optimization import HyperparamOptimizer
+from ..logging.cf_logger import CfLogger
 
 
 class EvaluationRunner:
 
-    def __init__(self, config_file_path: str, results_dir: str):
+    def __init__(self, config_file_path: str, results_dir: str, logger: CfLogger):
         self.results_dir = results_dir
         config_all = Config(self.load_config(config_file_path))
         self.data_config = config_all.data.diabetes
         self.evaluation_config = config_all.evaluation
         self.hyperparam_opt = HyperparamOptimizer()
-        self.debug = config_all.evaluation.debug
         self.time_start = time.time()
+        self.logger = logger
 
     def load_config(self, config_file_path: str) -> dict:
         """Load configuration.
@@ -64,12 +65,12 @@ class EvaluationRunner:
             self.data,
             classifier,
             self.hyperparam_opt,
+            self.logger,
         )
-        histogram_dict, aggregated_results = evaluator.perform_evaluation()
-        if self.debug:
-            print(json.dumps(aggregated_results, indent=2))
+        aggregated_results = evaluator.perform_evaluation()
+        self.logger.log_debug(json.dumps(aggregated_results, indent=2))
         results_container.set_counterfactual_metrics(aggregated_results)
-        results_container.set_counterfactual_histogram_dict(histogram_dict)
+        #results_container.set_counterfactual_histogram_dict(histogram_dict)
 
         return results_container
 
@@ -86,9 +87,8 @@ class EvaluationRunner:
         for k, v in params.items():
             current_evaluation_config_dict["current_params"][k] = v
 
-        if self.debug:
-            print("current_evaluation_config_dict")
-            print(json.dumps(current_evaluation_config_dict, indent=2))
+        self.logger.log_debug("current_evaluation_config_dict")
+        self.logger.log_debug(json.dumps(current_evaluation_config_dict, indent=2))
 
         evaluation_results_obj = self.run_counterfactual_evaluation_with_config(
             Config(current_evaluation_config_dict),
@@ -183,8 +183,7 @@ class EvaluationRunner:
             )
             for param_combination in ind_missing_all_combs:
                 print(f"Running evaluation {iteration}/{total_combinations}")
-                if self.debug:
-                    print(f"param combination: {param_combination}")
+                self.logger.log_debug(f"param combination: {param_combination}")
                 iteration += 1
                 param_dict = {
                     "classifier": param_combination[0],
@@ -194,7 +193,8 @@ class EvaluationRunner:
                     "distance_lambda": param_combination[4],
                     "diversity_lambda": param_combination[5],
                     "sparsity_lambda": param_combination[6],
-                    "ind_missing": param_combination[7],
+                    "selection_alg": param_combination[7],
+                    "ind_missing": param_combination[8],
                     "num_missing": None,
                 }
                 all_results_container.add_evaluation(
@@ -205,8 +205,7 @@ class EvaluationRunner:
             print("Running evaluation for increasing number of missing values")
             for param_combination in num_missing_all_combs:
                 print(f"Running evaluation {iteration}/{total_combinations}")
-                if self.debug:
-                    print(f"param combination: {param_combination}")
+                self.logger.log_debug(f"param combination: {param_combination}")
                 iteration += 1
                 param_dict = {
                     "classifier": param_combination[0],
@@ -216,8 +215,9 @@ class EvaluationRunner:
                     "distance_lambda": param_combination[4],
                     "diversity_lambda": param_combination[5],
                     "sparsity_lambda": param_combination[6],
+                    "selection_alg": param_combination[7],
+                    "num_missing": param_combination[8],
                     "ind_missing": None,
-                    "num_missing": param_combination[7],
                 }
                 all_results_container.add_evaluation(
                     self.run_single_evaluation(param_dict, results_file_path)

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import seaborn as sns
+import json
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 from typing import Union
@@ -9,8 +10,18 @@ from ..evaluation.evaluation_results_container import (
 )
 from ..utils.visualization_utils import (
     get_sns_palette,
+    get_sns_palette_alt,
     save_data_boxplots,
     save_data_histograms,
+    get_pretty_title,
+    get_plot_metrics_names,
+    get_average_metric_values,
+    get_gradient_genetic_colors,
+    get_naive_greedy_colors,
+    get_mean_multiple_colors,
+    get_runtime_distribution_colors,
+    get_custom_palette_colorbrewer_vibrant,
+    get_custom_palette_colorbrewer_pastel,
 )
 from ..utils.data_utils import Config
 from ..utils.misc_utils import parse_results_file
@@ -29,89 +40,182 @@ class ResultsVisualizer:
     #    save_data_histograms(self.data, f"{self.results_dir}/data_hists.png")
     #    save_data_boxplots(self.data, f"{self.results_dir}/data_boxplots.png")
 
-    def save_metrics_for_varying_n_plot(
-        self,
-    ):
-        """Saves plot with counterfactual metrics for different values of n.
-
-        :param EvaluationResultsContainer evaluation_results_container: object with all evaluation results
-        :param str result_file_path: file to save plot to
-        """
-
-        plot_metrics = [
-            "avg_dist_from_original",
-            "avg_diversity",
-            "avg_count_diversity",
-            "avg_diversity_missing_values",
-            "avg_count_diversity_missing_values",
-            "avg_sparsity",
-            "avg_runtime_seconds",
-        ]
+    def gradient_vs_genetic(self):
+        """Saves plot comparing performance of gradient and genetic algorithms."""
         all_evaluation_params_dict = (
             self.results_container.get_all_evaluation_params_dict()
         )
         data = []
 
         for n in all_evaluation_params_dict["n"]:
-            for num_missing in all_evaluation_params_dict["num_missing"]:
-                evaluation_obj = self.results_container.get_evaluation_for_params(
-                    {"n": n, "imputation_type": "multiple", "num_missing": num_missing}
+            for classifier in all_evaluation_params_dict["classifier"]:
+                results_for_all_missing_inds = []
+                for ind_missing in all_evaluation_params_dict["ind_missing"]:
+                    evaluation_obj = self.results_container.get_evaluation_for_params(
+                        {
+                            "classifier": classifier,
+                            "imputation_type": "multiple",
+                            "ind_missing": ind_missing,
+                            "num_missing": None,
+                            "n": n,
+                            "k": 3,
+                            "selection_alg": "naive",
+                        }
+                    )
+                    results_dict = {
+                        k: v
+                        for k, v in evaluation_obj.get_counterfactual_metrics().items()
+                        if k in get_plot_metrics_names()
+                    }
+                    results_dict[
+                        "avg_runtime_seconds"
+                    ] = evaluation_obj.get_counterfactual_metrics()["runtimes"][
+                        "avg_total"
+                    ]
+                    results_for_all_missing_inds.append(results_dict)
+
+                average_results = get_average_metric_values(
+                    results_for_all_missing_inds
                 )
-                results_dict = {
-                    k: v
-                    for k, v in evaluation_obj.get_counterfactual_metrics().items()
-                    if k in plot_metrics
-                }
-                results_dict["avg_runtime_seconds"] = evaluation_obj.get_counterfactual_metrics()["runtimes"]["avg_total"]
-                for k, v in results_dict.items():
+                for k, v in average_results.items():
                     data.append(
                         {
                             "n": n,
-                            "num_missing": num_missing,
                             "metric": k,
                             "value": v,
+                            "classifier": evaluation_obj.get_params().classifier,
                         }
                     )
 
         df = pd.DataFrame(data)
-
-        g = sns.FacetGrid(
+        sns.set_theme()
+        g = sns.catplot(
             data=df,
-            col="metric",
-            hue="num_missing",
-            col_wrap=4,
-            palette=get_sns_palette(),
-            sharex=False,
-            sharey=False,
-            height=4,
-            legend_out=True,
-        )
-
-        g.map_dataframe(
-            sns.lineplot, 
-            x="n", 
+            x="n",
             y="value",
-            hue="num_missing",
-            style="num_missing",
-            palette=get_sns_palette(),
-            markers=True, 
-            dashes=False,
-            #legend="brief"
+            hue="classifier",
+            col="metric",
+            kind="bar",
+            # palette="Set2",
+            # palette=get_gradient_genetic_colors(),
+            ci=None,
+            height=4,
+            aspect=1.5,
+            col_wrap=3,
+            sharey=False,
+            sharex=False,
+            col_order=get_plot_metrics_names(),
         )
-        g.set(xticks=all_evaluation_params_dict["n"])
-
-        # Set x-axis ticks explicitly to span from 1 to 40
-        x_ticks = [1, 5, 10, 15, 20, 25, 30, 35, 40]
-        g.set(xticks=x_ticks)  # Set ticks from 1 to 40 on the x-axis
-
-        # Adjust x-axis limits to cover full range from 1 to 40
-        g.set(xlim=(1, 40))
 
         g.figure.subplots_adjust(top=0.85, hspace=0.6)
 
         for ax in g.axes.flat:
             metric_name = ax.get_title().split(" = ")[-1]
-            ax.set_title(self._get_pretty_title(metric_name), fontsize=12)
+            if metric_name == "avg_runtime_seconds":
+                ax.set_title("Average runtime (log seconds)", fontsize=14)
+                ax.set_yscale("log")
+            else:
+                ax.set_title(get_pretty_title(metric_name), fontsize=14)
+            ax.set_ylabel("")
+            ax.set_xlabel("n")
+
+        for ax in g.axes.flat:
+            ax.yaxis.set_tick_params(labelsize=10)
+            ax.set_ylabel(ax.get_ylabel(), fontsize=12)
+
+        legend = g._legend
+        legend.set_title("Algorithm")
+
+        legend_name_map = {"sklearn": "Genetic", "tensorflow": "Gradient"}
+
+        for text in legend.get_texts():
+            classifier_name = text.get_text()
+            text.set_text(legend_name_map[classifier_name])
+        sns.move_legend(g, "upper center")
+
+        g.figure.savefig(
+            f"{self.visualizations_dir_path}/gradient_vs_genetic.png",
+            bbox_inches="tight",
+            dpi=300,
+        )
+
+        with open(f"{self.visualizations_dir_path}/gradient_vs_genetic.csv", "w") as f:
+            f.write(df.to_csv())
+
+    def multiple_imputation_effect_of_n(
+        self,
+    ):
+        """Saves plot visualizing effect of different n values on multiple imputation."""
+        all_evaluation_params_dict = (
+            self.results_container.get_all_evaluation_params_dict()
+        )
+        data = []
+
+        for n in all_evaluation_params_dict["n"]:
+            results_for_all_missing_inds = []
+            for ind_missing in all_evaluation_params_dict["ind_missing"]:
+                evaluation_obj = self.results_container.get_evaluation_for_params(
+                    {
+                        "classifier": "sklearn",
+                        "imputation_type": "multiple",
+                        "ind_missing": ind_missing,
+                        "num_missing": None,
+                        "n": n,
+                        "k": 3,
+                        "selection_alg": "naive",
+                    }
+                )
+                results_dict = {
+                    k: v
+                    for k, v in evaluation_obj.get_counterfactual_metrics().items()
+                    if k in get_plot_metrics_names()
+                }
+                results_dict["avg_runtime_seconds"] = (
+                    evaluation_obj.get_counterfactual_metrics()["runtimes"]["avg_total"]
+                )
+                results_for_all_missing_inds.append(results_dict)
+
+            average_results = get_average_metric_values(results_for_all_missing_inds)
+            for k, v in average_results.items():
+                data.append(
+                    {
+                        "n": n,
+                        "metric": k,
+                        "value": v,
+                    }
+                )
+
+        df = pd.DataFrame(data)
+        sns.set_theme()
+        g = sns.FacetGrid(
+            data=df,
+            col="metric",
+            col_wrap=3,
+            palette=get_sns_palette(),
+            sharex=False,
+            sharey=False,
+            height=4,
+            col_order=get_plot_metrics_names(),
+        )
+
+        g.map_dataframe(
+            sns.lineplot,
+            x="n",
+            y="value",
+            palette=get_sns_palette(),
+            marker="s",
+            dashes=False,
+        )
+        x_ticks = [1] + [*range(10, 101, 10)]
+        g.set(xticks=x_ticks)
+
+        g.set(xlim=(1, 101))
+
+        g.figure.subplots_adjust(top=0.85, hspace=0.6)
+
+        for ax in g.axes.flat:
+            metric_name = ax.get_title().split(" = ")[-1]
+            ax.set_title(get_pretty_title(metric_name), fontsize=12)
             ax.set_ylabel("")
             ax.set_xlabel("n")
 
@@ -123,51 +227,138 @@ class ResultsVisualizer:
             ax.set_ylabel(ax.get_ylabel(), fontsize=12)
             ax.set_ylim(ymin=0)
 
-        g.add_legend(title="# missing")
-        # g.figure.tight_layout()
-
         g.figure.savefig(
-            f"{self.visualizations_dir_path}/metrics_for_varying_n.png",
+            f"{self.visualizations_dir_path}/multiple_imputation_effect_of_n.png",
             bbox_inches="tight",
             dpi=300,
         )
 
-    def _get_pretty_title(self, metric_name: str) -> str:
-        """Maps metric name to string representation used in plot title.
+        with open(
+            f"{self.visualizations_dir_path}/multiple_imputation_effect_of_n.csv", "w"
+        ) as f:
+            f.write(df.to_csv())
 
-        :param str metric_name: metric name used as dict key
-        :return str: pretty name
+    def multiple_imputation_effect_of_selection_algo(self):
+        """Saves plot visualizing effect of selection algorithm on multiple imputation,
+        on different values of n.
         """
-        title_dict = {
-            "avg_n_vectors": "Average # counterfactuals found",
-            "avg_dist_from_original": "Average distance from original",
-            "avg_diversity": "Average diversity",
-            "avg_count_diversity": "Average count diversity",
-            "avg_diversity_missing_values": "Average diversity (missing values)",
-            "avg_count_diversity_missing_values": "Average count diversity (missing values)",
-            "avg_sparsity": "Average sparsity",
-            "avg_runtime_seconds": "Average runtime (s)",
-            "coverage": "Coverage",
-        }
-        return title_dict[metric_name]
+        all_evaluation_params_dict = (
+            self.results_container.get_all_evaluation_params_dict()
+        )
+        data = []
 
-    def save_imputation_type_results_per_missing_value_count_plot(self):
-        """Plots metrics of each counterfactual metric per number of missing values.
+        for n in all_evaluation_params_dict["n"]:
+            for selection_alg in all_evaluation_params_dict["selection_alg"]:
+                results_for_all_missing_inds = []
+                for ind_missing in all_evaluation_params_dict["ind_missing"]:
+                    evaluation_obj = self.results_container.get_evaluation_for_params(
+                        {
+                            "classifier": "sklearn",
+                            "imputation_type": "multiple",
+                            "ind_missing": ind_missing,
+                            "num_missing": None,
+                            "n": n,
+                            "k": 3,
+                            "selection_alg": selection_alg,
+                        }
+                    )
+                    results_dict = {
+                        k: v
+                        for k, v in evaluation_obj.get_counterfactual_metrics().items()
+                        if k in get_plot_metrics_names()
+                    }
+                    results_dict[
+                        "avg_runtime_seconds"
+                    ] = evaluation_obj.get_counterfactual_metrics()["runtimes"][
+                        "avg_total"
+                    ]
+                    results_for_all_missing_inds.append(results_dict)
 
-        :param EvaluationResultsContainer all_results: all results dictionary
-        :param str file_path: path to save plot to
+                # Obtain average for one missing feature
+                average_results = get_average_metric_values(
+                    results_for_all_missing_inds
+                )
+                # if n == 5 and selection_alg == "greedy":
+                #    print(json.dumps(average_results, indent=2))
+                for k, v in average_results.items():
+                    data.append(
+                        {
+                            "metric": k,
+                            "n": n,
+                            "value": v,
+                            "selection_alg": selection_alg,
+                        }
+                    )
+
+        df = pd.DataFrame(data)
+        sns.set_theme()
+        g = sns.FacetGrid(
+            data=df,
+            col="metric",
+            col_wrap=3,
+            sharex=False,
+            sharey=False,
+            height=4,
+            legend_out=True,
+            col_order=get_plot_metrics_names(),
+        )
+
+        g.map_dataframe(
+            sns.lineplot,
+            x="n",
+            y="value",
+            hue="selection_alg",
+            style="selection_alg",
+            palette=get_sns_palette(),
+            markers=["s", "o"],
+            dashes=False,
+            legend="brief",
+        )
+
+        x_ticks = [1] + [*range(10, 101, 10)]
+        g.set(xticks=x_ticks)
+
+        g.set(xlim=(1, 101))
+
+        g.figure.subplots_adjust(top=0.85, hspace=0.6)
+
+        for ax in g.axes.flat:
+            metric_name = ax.get_title().split(" = ")[-1]
+            ax.set_title(get_pretty_title(metric_name), fontsize=12)
+            ax.set_ylabel("")
+            ax.set_xlabel("n")
+
+            if not ax.has_data():
+                ax.remove()
+
+        for ax in g.axes.flat:
+            ax.yaxis.set_tick_params(labelsize=10)
+            ax.set_ylabel(ax.get_ylabel(), fontsize=12)
+            ax.set_ylim(ymin=0)
+
+        # g.add_legend(title="Selection algorithm")
+        # sns.move_legend(g, 'upper center')
+        # g.figure.tight_layout()
+        plt.legend()
+
+        g.figure.savefig(
+            f"{self.visualizations_dir_path}/multiple_imputation_effect_of_selection_algo.png",
+            bbox_inches="tight",
+            dpi=300,
+        )
+
+        with open(
+            f"{self.visualizations_dir_path}/multiple_imputation_effect_of_selection_algo.csv",
+            "w",
+        ) as f:
+            f.write(df.to_csv())
+
+    def mean_vs_multiple_imputation_multiple_missing_values(self):
+        """Saves plot comparing mean and multiple imputation for given n,
+        for different number of missing values.
         """
 
-        plot_metrics = [
-            "avg_n_vectors",
-            "avg_dist_from_original",
-            "avg_diversity",
-            "avg_count_diversity",
-            "avg_diversity_missing_values",
-            "avg_count_diversity_missing_values",
-            "avg_sparsity",
-            "avg_runtime_seconds",
-        ]
+        plot_metrics = get_plot_metrics_names()
 
         all_evaluation_params_dict = (
             self.results_container.get_all_evaluation_params_dict()
@@ -177,17 +368,32 @@ class ResultsVisualizer:
         for m in all_evaluation_params_dict["num_missing"]:
             for imputation_type in all_evaluation_params_dict["imputation_type"]:
                 evaluation_obj = self.results_container.get_evaluation_for_params(
-                    {"imputation_type": imputation_type, "num_missing": m}
+                    {
+                        "classifier": "sklearn",
+                        "imputation_type": imputation_type,
+                        "ind_missing": None,
+                        "num_missing": m,
+                        "n": 20,
+                        "k": 3,
+                        "selection_alg": "naive",
+                    }
                 )
                 results_dict = {
                     k: v
                     for k, v in evaluation_obj.get_counterfactual_metrics().items()
                     if k in plot_metrics
                 }
-                results_dict["avg_runtime_seconds"] = evaluation_obj.get_counterfactual_metrics()["runtimes"]["avg_total"]
+                results_dict["avg_runtime_seconds"] = (
+                    evaluation_obj.get_counterfactual_metrics()["runtimes"]["avg_total"]
+                )
                 for k, v in results_dict.items():
                     data.append(
-                        {"m": m, "type": imputation_type, "metric": k, "value": v}
+                        {
+                            "m": m,
+                            "imputation_type": imputation_type,
+                            "metric": k,
+                            "value": v,
+                        }
                     )
 
         df = pd.DataFrame(data)
@@ -196,23 +402,27 @@ class ResultsVisualizer:
             data=df,
             x="m",
             y="value",
-            hue="type",
+            hue="imputation_type",
             col="metric",
             kind="bar",
             palette=get_sns_palette(),
             ci=None,
             height=4,
             aspect=1.5,
-            col_wrap=4,
+            col_wrap=3,
             sharey=False,
             sharex=False,
+            col_order=get_plot_metrics_names(),
         )
+
+        legend = g._legend
+        legend.set_title("Imputation type")
 
         g.figure.subplots_adjust(top=0.85, hspace=0.6)
 
         for ax in g.axes.flat:
             metric_name = ax.get_title().split(" = ")[-1]
-            ax.set_title(self._get_pretty_title(metric_name), fontsize=14)
+            ax.set_title(get_pretty_title(metric_name), fontsize=14)
             ax.set_ylabel("")
             ax.set_xlabel("# missing values")
 
@@ -220,30 +430,24 @@ class ResultsVisualizer:
             ax.yaxis.set_tick_params(labelsize=10)
             ax.set_ylabel(ax.get_ylabel(), fontsize=12)
 
+        sns.move_legend(g, "upper center")
+
         g.figure.savefig(
-            f"{self.visualizations_dir_path}/imputation_type_results_per_missing_value_count.png",
+            f"{self.visualizations_dir_path}/mean_vs_multiple_imputation_multiple_missing_values.png",
             bbox_inches="tight",
             dpi=300,
         )
 
-    def save_imputation_type_results_per_feature_with_missing_value(self):
-        """Plots metrics of each counterfactual metric per feature with missing value.
+        with open(
+            f"{self.visualizations_dir_path}/mean_vs_multiple_imputation_multiple_missing_values.csv",
+            "w",
+        ) as f:
+            f.write(df.to_csv())
 
-        :param EvaluationResultsContainer all_results: all results dictionary
-        :param str file_path: path to save plot to
+    def mean_vs_multiple_imputation_single_missing_value(self):
+        """Saves plot comparing mean and multiple imputation for given n,
+        for different missing feature.
         """
-
-        plot_metrics = [
-            "avg_n_vectors",
-            "avg_dist_from_original",
-            "avg_diversity",
-            "avg_count_diversity",
-            "avg_diversity_missing_values",
-            "avg_count_diversity_missing_values",
-            "avg_sparsity",
-            "avg_runtime_seconds",
-        ]
-
         all_evaluation_params_dict = (
             self.results_container.get_all_evaluation_params_dict()
         )
@@ -251,22 +455,31 @@ class ResultsVisualizer:
 
         for f_ind in all_evaluation_params_dict["ind_missing"]:
             f_name = self.predictor_names[int(f_ind)]
-
             for imputation_type in all_evaluation_params_dict["imputation_type"]:
                 evaluation_obj = self.results_container.get_evaluation_for_params(
-                    {"imputation_type": imputation_type, "ind_missing": f_ind}
+                    {
+                        "classifier": "sklearn",
+                        "imputation_type": imputation_type,
+                        "ind_missing": f_ind,
+                        "num_missing": None,
+                        "n": 20,  # TODO: change to appropriate
+                        "k": 3,
+                        "selection_alg": "naive",
+                    }
                 )
                 results_dict = {
                     k: v
                     for k, v in evaluation_obj.get_counterfactual_metrics().items()
-                    if k in plot_metrics
+                    if k in get_plot_metrics_names()
                 }
-                results_dict["avg_runtime_seconds"] = evaluation_obj.get_counterfactual_metrics()["runtimes"]["avg_total"]
+                results_dict["avg_runtime_seconds"] = (
+                    evaluation_obj.get_counterfactual_metrics()["runtimes"]["avg_total"]
+                )
                 for k, v in results_dict.items():
                     data.append(
                         {
                             "f_ind": f_ind,
-                            "type": imputation_type,
+                            "imputation_type": imputation_type,
                             "metric": k,
                             "value": v,
                             "f_name": f_name,
@@ -274,28 +487,32 @@ class ResultsVisualizer:
                     )
 
         df = pd.DataFrame(data)
-
+        sns.set_theme()
         g = sns.catplot(
             data=df,
             x="f_name",
             y="value",
-            hue="type",
+            hue="imputation_type",
             col="metric",
             kind="bar",
             palette=get_sns_palette(),
             ci=None,
             height=4,
             aspect=1.5,
-            col_wrap=4,
+            col_wrap=3,
             sharey=False,
             sharex=False,
+            col_order=get_plot_metrics_names(),
         )
 
         g.figure.subplots_adjust(top=0.85, hspace=0.6)
+        legend = g._legend
+        legend.set_title("Imputation type")
+        sns.move_legend(g, "lower right")
 
         for ax in g.axes.flat:
             metric_name = ax.get_title().split(" = ")[-1]
-            ax.set_title(self._get_pretty_title(metric_name), fontsize=14)
+            ax.set_title(get_pretty_title(metric_name), fontsize=14)
             ax.set_ylabel("")
             ax.set_xlabel("Predictor with missing value")
             ax.set_xticklabels(
@@ -312,31 +529,57 @@ class ResultsVisualizer:
         g.figure.tight_layout()
 
         g.figure.savefig(
-            f"{self.visualizations_dir_path}/imputation_type_results_per_feature_with_missing_value.png",
+            f"{self.visualizations_dir_path}/mean_vs_multiple_imputation_single_missing_value.png",
             bbox_inches="tight",
             dpi=300,
         )
 
-    def save_runtime_distribution_plot(self):
+        with open(
+            f"{self.visualizations_dir_path}/mean_vs_multiple_imputation_single_missing_value.csv",
+            "w",
+        ) as f:
+            f.write(df.to_csv())
+
+    def runtime_distributions_per_selection_alg_and_n(self):
         all_evaluation_params_dict = (
             self.results_container.get_all_evaluation_params_dict()
         )
 
         data_list = []
         ns = all_evaluation_params_dict["n"]
+        selection_algs = all_evaluation_params_dict["selection_alg"]
 
-        for n in ns:
-            evaluation_obj = self.results_container.get_evaluation_for_params(
-                {"imputation_type": "multiple", "num_missing": 3, "n": n, "k": 3}
-            )
-            runtime_results = {
-                k: v
-                for k, v in evaluation_obj.get_counterfactual_metrics()["runtimes"].items()
-                if not k == "avg_total"
-            }
-            data_item = runtime_results
-            data_item["n"] = n
-            data_list.append(data_item)
+        for alg in selection_algs:
+            for n in ns:
+                results_for_all_missing_inds = []
+                for ind_missing in all_evaluation_params_dict["ind_missing"]:
+                    evaluation_obj = self.results_container.get_evaluation_for_params(
+                        {
+                            "classifier": "sklearn",
+                            "imputation_type": "multiple",
+                            "ind_missing": ind_missing,
+                            "num_missing": None,
+                            "n": n,
+                            "k": 3,
+                            "selection_alg": alg,
+                        }
+                    )
+                    runtime_results = {
+                        k: v
+                        for k, v in evaluation_obj.get_counterfactual_metrics()[
+                            "runtimes"
+                        ].items()
+                        if not k == "avg_total"
+                    }
+                    results_for_all_missing_inds.append(runtime_results)
+
+                average_results = get_average_metric_values(
+                    results_for_all_missing_inds
+                )
+                data_item = average_results
+                data_item["n"] = n
+                data_item["selection_alg"] = alg
+                data_list.append(data_item)
 
         names = {
             "avg_multiple_imputation": "Multiple imputation",
@@ -345,48 +588,71 @@ class ResultsVisualizer:
             "avg_selection": "Selection",
         }
 
-        fig, ax = plt.subplots(figsize=(10, 6))
-        palette = sns.color_palette(get_sns_palette(), len(names))
+        naive_data = [d for d in data_list if d["selection_alg"] == "naive"]
+        greedy_data = [d for d in data_list if d["selection_alg"] == "greedy"]
 
-        bar_positions = np.arange(len(ns))
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
+        palette = sns.color_palette("tab20")
+        # palette = get_custom_palette_colorbrewer_vibrant()
+        sns.set_theme()
 
-        # Iterate over the data and plot each 'n'
-        bar_width = 0.5  # Width of each bar
-        for i, data in enumerate(data_list):
-            bottom = 0  # Reset bottom for stacking
+        def plot_data(ax, data, title):
+            bar_positions = np.arange(len(ns))
+            bar_width = 0.5
 
-            for j, (key, value) in enumerate(data.items()):
-                if key == "n":  # Skip the 'n' key, it's for labeling only
-                    continue
+            for i, data_item in enumerate(data):
+                bottom = 0
 
-                # Plot the stacked bar for each runtime component
-                ax.bar(
-                    bar_positions[i], value, bottom=bottom, color=palette[j], 
-                    width=bar_width, label=names[key] if i == 0 else ""
-                )
-                bottom += value
+                for j, (key, value) in enumerate(data_item.items()):
+                    if key == "n" or key == "selection_alg":
+                        continue
 
-        # Add labels and format x-axis
-        ax.set_xlabel("n")
-        ax.set_ylabel("Runtime (s)")
-        ax.set_title("Runtime distribution for different values of n")
-        ax.set_xticks(bar_positions)
-        ax.set_xticklabels(ns)  # Set the 'n' values as x-axis labels
+                    ax.bar(
+                        bar_positions[i],
+                        value,
+                        bottom=bottom,
+                        color=palette[j],
+                        width=bar_width,
+                        label=names[key] if i == 0 else "",
+                    )
+                    bottom += value
 
-        # Add legend outside the plot
-        ax.legend(
-            title="Items", bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0
+            ax.set_xlabel("n")
+            ax.set_xticks(bar_positions)
+            ax.set_xticklabels(ns)
+            ax.set_title(title)
+
+        plot_data(ax1, naive_data, "Runtime distribution (naive)")
+
+        plot_data(ax2, greedy_data, "Runtime distribution (greedy)")
+
+        ax1.set_ylabel("Runtime (s)")
+
+        handles, labels = ax1.get_legend_handles_labels()
+        # fig.legend(
+        #    handles, labels, title="", bbox_to_anchor=(1.05, 0.5), loc='upper right',
+        #    borderaxespad=0.0
+        # )
+        fig.legend(
+            handles,
+            labels,
+            title="",  # bbox_to_anchor=(1.05, 0.5),
         )
 
-        # Adjust the layout to ensure everything fits
-        plt.tight_layout(rect=[0, 0, 0.85, 1])
+        # Adjust layout to leave space for the legend
+        plt.tight_layout(rect=[0, 0, 0.8, 1])  # Make space on the right for the legend
 
-        # Save the plot
         plt.savefig(
-            f"{self.visualizations_dir_path}/runtime_distribution.png",
+            f"{self.visualizations_dir_path}/runtime_distribution_naive_vs_greedy.png",
             bbox_inches="tight",
             dpi=500,
         )
+
+        with open(
+            f"{self.visualizations_dir_path}/runtime_distribution_naive_vs_greedy.csv",
+            "w",
+        ) as f:
+            f.write(pd.DataFrame(data_list).to_csv())
 
     def save_imputation_samples_distribution_plot(
         self,

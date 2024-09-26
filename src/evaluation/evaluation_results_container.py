@@ -70,18 +70,34 @@ class EvaluationResultsContainer:
     def get_evaluations(self):
         return self.evaluations
 
-    def get_evaluation_for_params(self, param_dict) -> SingleEvaluationResultsContainer:
-        matches = False
+    def get_evaluation_for_params(self, param_dict: dict) -> SingleEvaluationResultsContainer:
+        """Finds SingleEvaluationResultsContainer that evaluated the given parameters.
+        Raises error if no evaluation or multiple evaluations were found.
+
+        :param dict param_dict: dictionary of params
+        :return SingleEvaluationResultsContainer: matching evaluation
+        """
+        found = []
         for evaluation in self.evaluations:
+            matches_params = False
             for k, v in param_dict.items():
                 if evaluation.get_params().get_dict()[k] == v:
-                    matches = True
+                    matches_params = True
                 else:
-                    matches = False
+                    matches_params = False
                     break
-            if matches:
-                return evaluation
-        raise RuntimeError(f"Did not find evaluation for params {param_dict}")
+            if matches_params:
+                found.append(evaluation)
+
+        if len(found) == 1:
+            return found[0]
+        elif len(found) == 0:
+            raise RuntimeError(f"Did not find evaluation for params {param_dict}")
+        elif len(found) > 1:
+            error_str = f"ALERT found multiple evaluations for params {param_dict}:\n"
+            for evaluation in found:
+                error_str += f"{evaluation.get_params().get_dict()}\n"
+            raise RuntimeError(error_str)
 
     def get_all_evaluation_params(self) -> Config:
         return self.all_evaluation_params

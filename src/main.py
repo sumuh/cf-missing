@@ -6,6 +6,7 @@ from .evaluation.evaluation_runner import EvaluationRunner
 from .visualization.results_visualizer import ResultsVisualizer
 import warnings
 import random
+from .logging.cf_logger import CfLogger
 
 
 # Todo: remove after fixing sklearn UserWarning: X has feature names, but MinMaxScaler was fitted without feature names
@@ -19,37 +20,42 @@ import warnings
 warnings.warn = warn
 
 
-def run_evaluations(current_file_path: str) -> str:
-    current_file_path = os.path.dirname(os.path.realpath(__file__))
-    config_file_path = f"{current_file_path}/../config/config.yaml"
-    current_time = datetime.now()
-    formatted_time_day = current_time.strftime("%d-%m-%Y")
-    formatted_time_sec = current_time.strftime("%d-%m-%Y-%H-%M-%S")
-    results_dir = f"{current_file_path}/../evaluation_results/{formatted_time_day}/run_{formatted_time_sec}"
-    Path(results_dir).mkdir(parents=True)
-
-    evaluation_runner = EvaluationRunner(config_file_path, results_dir)
+def run_evaluations(results_dir: str, config_file_path: str, logger: CfLogger) -> str:
+    evaluation_runner = EvaluationRunner(config_file_path, results_dir, logger)
     evaluation_runner.run_evaluations()
-    return results_dir
 
 
-def make_visualizations(
-    current_file_path: str, results_file_path: str, visualizations_dir_path: str
-):
+def make_visualizations(results_file_path: str, visualizations_dir_path: str):
     results_visualizer = ResultsVisualizer(results_file_path, visualizations_dir_path)
-    results_visualizer.save_runtime_distribution_plot()
-    #results_visualizer.save_metrics_for_varying_n_plot()
-    #results_visualizer.save_imputation_type_results_per_missing_value_count_plot()
-    #results_visualizer.save_imputation_type_results_per_feature_with_missing_value()
+    # results_visualizer.gradient_vs_genetic()
+    # results_visualizer.multiple_imputation_effect_of_n()
+    # results_visualizer.multiple_imputation_effect_of_selection_algo()
+    results_visualizer.runtime_distributions_per_selection_alg_and_n()
+    # results_visualizer.mean_vs_multiple_imputation_single_missing_value()
+    # results_visualizer.mean_vs_multiple_imputation_multiple_missing_values()
 
 
 def main():
     random.seed(12)
+    current_time = datetime.now()
     current_file_path = os.path.dirname(os.path.realpath(__file__))
-    results_dir = run_evaluations(current_file_path)
-    # results_dir = f"{current_file_path}/../evaluation_results/14-09-2024/run_14-09-2024-20-44-45"
-    # print(results_dir)
-    # make_visualizations(current_file_path, f"{results_dir}/results.yaml", results_dir)
+    config_file_path = f"{current_file_path}/../config/config.yaml"
+
+    # Make results directory
+    # formatted_time_day = current_time.strftime("%d-%m-%Y")
+    # formatted_time_sec = current_time.strftime("%d-%m-%Y-%H-%M-%S")
+    # results_dir = f"{current_file_path}/../evaluation_results/{formatted_time_day}/run_{formatted_time_sec}"
+    # Path(results_dir).mkdir(parents=True)
+
+    # Init logger
+    # logger = CfLogger(results_dir)
+
+    # Run evaluations
+    # run_evaluations(results_dir, config_file_path, logger)
+
+    # Make visualizations
+    results_dir = f"{current_file_path}/../evaluation_results/starred/run_21-09-2024-17-27-56-n-and-selection-alg"
+    make_visualizations(f"{results_dir}/results.yaml", results_dir)
 
 
 if __name__ == "__main__":

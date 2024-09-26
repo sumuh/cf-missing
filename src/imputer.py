@@ -13,9 +13,7 @@ class Imputer:
         train_data: np.array,
         hyperparam_opt: HyperparamOptimizer = None,
         init_multiple_imputation: bool = False,
-        debug: bool = False,
     ):
-        self.debug = debug
         if init_multiple_imputation:
             self.fcs_models = self._init_fcs_models(train_data, hyperparam_opt)
             self.min_values = get_feature_min_values(train_data)
@@ -121,8 +119,6 @@ class Imputer:
                 mu, sigma = self._get_fcs_model_predicted_mu_and_sigma_for_feat(
                     feat_i, input
                 )
-                # if self.debug:
-                #    print(f"mu: {mu}, sigma: {sigma} for feat {feat_i}")
                 # two types of problems: (1) non-positive sigmas
                 # (2) mus outside legal range of min_value and max_value
                 # (results in inf sample)

@@ -34,40 +34,42 @@ data:
 evaluation:
   params:
     classifier: # Possible values: sklearn, tensorflow
+      - tensorflow 
       - sklearn
-      #- tensorflow 
 
     imputation_type:
-      - mean
+      #- mean
       - multiple
 
     ind_missing:
       - 0
-      - 1
-      - 2
-      - 3
-      - 4
-      - 5
-      - 6
-      - 7
+      #- 1
+      #- 2
+      #- 3
+      #- 4
+      #- 5
+      #- 6
+      #- 7
 
     num_missing:
-      - 1
-      - 2
-      - 3
-      - 4
-      - 5
-      - 6
-      - 7
+      #- 1
+      #- 2
+      #- 3
+      #- 4
+      #- 5
+      #- 6
+      #- 7
 
     n:
       - 1
       - 5
       - 10
-      - 20
-      - 40
-      - 80
-      - 100
+      #- 20
+      #- 40
+      #- 60
+      #- 80
+      #- 100
+
     k:
       - 3
 
@@ -79,6 +81,10 @@ evaluation:
 
     sparsity_lambda:
       - 1
+
+    selection_alg:
+      - naive
+      #- greedy
 
   current_params:
     classifier:
@@ -108,9 +114,8 @@ evaluation:
     sparsity_lambda:
       None
 
-  debug:
-    #True
-    False
+    selection_alg:
+      None
 
   numeric_metrics:
     - n_vectors

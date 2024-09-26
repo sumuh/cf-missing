@@ -4,6 +4,7 @@ import time
 import json
 import sys
 
+from ..logging.cf_logger import CfLogger
 from ..hyperparams.hyperparam_optimization import HyperparamOptimizer
 from ..classifiers.classifier_interface import Classifier
 from ..counterfactual_generator import CounterfactualGenerator
@@ -38,15 +39,15 @@ class CounterfactualEvaluator:
         data_pd: pd.DataFrame,
         classifier: Classifier,
         hyperparam_opt: HyperparamOptimizer,
+        logger: CfLogger,
     ):
         self.data_config = data_config
         self.evaluation_config = evaluation_config
-        self.debug = evaluation_config.debug
         self.hyperparam_opt = hyperparam_opt
         self.classifier = classifier
+        self.logger = logger
 
-        if self.debug:
-            print(data_pd.head())
+        self.logger.log_debug(data_pd.head())
 
         self.data_pd = data_pd
         self.data_np = data_pd.copy().to_numpy()
@@ -64,7 +65,8 @@ class CounterfactualEvaluator:
             distance_lambda=self.evaluation_config.current_params.distance_lambda,
             diversity_lambda=self.evaluation_config.current_params.diversity_lambda,
             sparsity_lambda=self.evaluation_config.current_params.sparsity_lambda,
-            debug=self.debug,
+            selection_alg=self.evaluation_config.current_params.selection_alg,
+            logger=self.logger,
         )
 
     def _evaluate_counterfactuals(
@@ -83,6 +85,9 @@ class CounterfactualEvaluator:
             )
             diversity = get_diversity(counterfactuals, mads)
             count_diversity = get_count_diversity(counterfactuals)
+            avg_sparsity = get_average_sparsity(
+                self.test_instance_complete_current, counterfactuals
+            )
             if len(self.indices_with_missing_values_current) > 0:
                 diversity_missing_values = get_diversity(
                     counterfactuals[:, self.indices_with_missing_values_current],
@@ -91,26 +96,20 @@ class CounterfactualEvaluator:
                 count_diversity_missing_values = get_count_diversity(
                     counterfactuals[:, self.indices_with_missing_values_current]
                 )
-                # Calculate sparsity from imputed test instance
-                avg_sparsity = get_average_sparsity(
-                    self.test_instance_complete_current, counterfactuals
-                )
             else:
                 diversity_missing_values = 0
                 count_diversity_missing_values = 0
-                avg_sparsity = get_average_sparsity(
-                    self.test_instance_complete_current, counterfactuals
-                )
-
-        return {
-            "n_vectors": n_cfs,
-            "avg_dist_from_original": avg_dist_from_original,
-            "diversity": diversity,
-            "count_diversity": count_diversity,
-            "diversity_missing_values": diversity_missing_values,
-            "count_diversity_missing_values": count_diversity_missing_values,
-            "avg_sparsity": avg_sparsity,
-        }
+            return {
+                "n_vectors": n_cfs,
+                "avg_dist_from_original": avg_dist_from_original,
+                "diversity": diversity,
+                "count_diversity": count_diversity,
+                "diversity_missing_values": diversity_missing_values,
+                "count_diversity_missing_values": count_diversity_missing_values,
+                "avg_sparsity": avg_sparsity,
+            }
+        else:
+            return {"n_vectors": 0}
 
     def _introduce_missing_values_to_test_instance(self) -> np.array:
         """Change specified value(s) in test instance to nan according to evaluation config params.
@@ -283,7 +282,7 @@ class CounterfactualEvaluator:
         )
         return final_dict
 
-    def perform_evaluation(self):
+    def perform_evaluation(self) -> dict[str, any]:
         """Evaluate counterfactual generation process for configurations given on init.
 
         :return dict metrics: dict containing metric arrays for all test instances
@@ -291,17 +290,14 @@ class CounterfactualEvaluator:
 
         def debug_info(info_frequency, row_ind, show_example, metrics):
             if row_ind % info_frequency == 0:
-                print(f"Evaluated {row_ind}/{num_rows} rows")
+                self.logger.log_debug(f"Evaluated {row_ind}/{num_rows} rows")
             # Every info_frequency rows find example to show
             if show_example:
                 if result[1] is not None:
-                    print(result[1])
-                    if not self.debug:
-                        show_example = False
-                    print(json.dumps(metrics, indent=2))
-            if self.debug:
-                for _ in range(4):
-                    print(f"{('~'*20)}")
+                    self.logger.log_debug(result[1])
+                    self.logger.log_debug(json.dumps(metrics, indent=2))
+            for _ in range(4):
+                self.logger.log_debug(f"{('~'*20)}")
             return show_example
 
         # Print status info & example df every info_frequency rows
@@ -316,21 +312,14 @@ class CounterfactualEvaluator:
         metrics = {metric: [] for metric in all_metric_names}
         metrics["runtimes"] = {metric: [] for metric in runtime_metric_names}
 
-        if self.debug:
-            show_example = True
-        else:
-            show_example = False
-
         for row_ind in range(num_rows):
-            show_example = (
-                row_ind % info_frequency == 0 or show_example
-            ) and self.debug
+            show_example = row_ind % info_frequency == 0
             result = self._evaluate_single_instance(row_ind)
             single_instance_metrics = result[0]
-            if self.debug:
-                print(
-                    f"test_instance_metrics: {json.dumps(single_instance_metrics, indent=2)}"
-                )
+            self.logger.log_debug(result[1])
+            self.logger.log_debug(
+                f"test_instance_metrics: {json.dumps(single_instance_metrics, indent=2)}"
+            )
 
             for metric_name, metric_value in single_instance_metrics.items():
                 if metric_name == "runtimes":
@@ -344,17 +333,14 @@ class CounterfactualEvaluator:
                 else:
                     metrics[metric_name].append(metric_value)
 
-            # print(json.dumps(metrics, indent=2))
-
             show_example = debug_info(
                 info_frequency, row_ind, show_example, single_instance_metrics
             )
 
         print(f"Evaluated {num_rows}/{num_rows} rows")
-        histogram_dict = {
-            metric_name: metric_value
-            for metric_name, metric_value in metrics.items()
-            if metric_name in self.evaluation_config.metrics_for_histograms
-        }
-        aggregated_results = self._aggregate_results(metrics)
-        return histogram_dict, aggregated_results
+        #histogram_dict = {
+        #    metric_name: metric_value
+        #    for metric_name, metric_value in metrics.items()
+        #    if metric_name in self.evaluation_config.metrics_for_histograms
+        #}
+        return self._aggregate_results(metrics)
