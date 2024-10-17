@@ -3,10 +3,6 @@ import pandas as pd
 import yaml
 import json
 
-from ..evaluation.evaluation_metrics import (
-    get_distance,
-    get_average_sparsity,
-)
 from ..evaluation.evaluation_results_container import (
     EvaluationResultsContainer,
     SingleEvaluationResultsContainer,
@@ -32,7 +28,6 @@ def write_run_configuration_to_file(
 def get_example_df_for_input_with_missing_values(
     test_instance_complete: np.array,
     test_instance_with_missing_values: np.array,
-    test_instance_imputed: np.array,
     counterfactuals: np.array,
 ) -> pd.DataFrame:
     """Creates a neat dataframe that shows the original input,
@@ -50,7 +45,6 @@ def get_example_df_for_input_with_missing_values(
             (
                 test_instance_complete,
                 test_instance_with_missing_values,
-                test_instance_imputed,
                 counterfactuals,
             )
         )
@@ -59,10 +53,9 @@ def get_example_df_for_input_with_missing_values(
             (
                 test_instance_complete,
                 test_instance_with_missing_values,
-                test_instance_imputed,
             )
         )
-    index = ["complete input", "input with missing", "imputed input"]
+    index = ["complete input", "input with missing"]
 
     for _ in range(len(counterfactuals)):
         index.append("counterfactual")

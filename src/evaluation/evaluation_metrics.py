@@ -14,7 +14,19 @@ def get_l0_norm(vector_1: np.array, vector_2: np.array) -> int:
     return np.linalg.norm(diff, ord=0)
 
 
-def get_distance(vector_1: np.array, vector_2: np.array, mads: np.array) -> float:
+def get_l0_norm_normalized(vector_1: np.array, vector_2: np.array) -> int:
+    """Calculates l0 norm of difference of two vectors.
+
+    :param np.array vector_1: vector 1
+    :param np.array vector_2: vector 2
+    :return int: l0 norm
+    """
+    return get_l0_norm(vector_1, vector_2) / vector_1.size
+
+
+def get_distance_normalized(
+    vector_1: np.array, vector_2: np.array, mads: np.array
+) -> float:
     """Calculates distance between two vectors weighted by each feature's
     mean absolute deviation and normalized by number of features. (Weighted l1 norm)
 
@@ -27,7 +39,7 @@ def get_distance(vector_1: np.array, vector_2: np.array, mads: np.array) -> floa
     num_features = vector_1.size
     for i in range(num_features):
         distances += abs(vector_1[i] - vector_2[i]) / mads[i]
-    return distances
+    return distances / num_features
 
 
 def get_average_distance_from_original(
@@ -41,15 +53,14 @@ def get_average_distance_from_original(
     :param np.array mads: mean absolute deviations for each feature
     :return float: average distance of vectors from original
     """
-    num_features = cf_vectors.shape[1]
     distances = np.apply_along_axis(
-        get_distance,
+        get_distance_normalized,
         1,
         cf_vectors,
         vector_2=original_vector,
         mads=mads,
     )
-    return (1 / (len(cf_vectors) * num_features)) * np.sum(distances)
+    return np.sum(distances) / len(cf_vectors)
 
 
 def get_average_sparsity(original_vector: np.array, cf_vectors: np.array) -> float:
@@ -59,11 +70,10 @@ def get_average_sparsity(original_vector: np.array, cf_vectors: np.array) -> flo
     :param np.array cf_vectors: counterfactual vectors
     :return float: average sparsity
     """
-    num_features = cf_vectors.shape[1]
     sparsities = np.apply_along_axis(
-        get_l0_norm, 1, cf_vectors, vector_2=original_vector
+        get_l0_norm_normalized, 1, cf_vectors, vector_2=original_vector
     )
-    return 1 - (1 / (len(cf_vectors) * num_features)) * np.sum(sparsities)
+    return 1 - (np.sum(sparsities) / len(cf_vectors))
 
 
 def get_diversity(cf_vectors: np.array, mads: np.array) -> float:
@@ -74,14 +84,17 @@ def get_diversity(cf_vectors: np.array, mads: np.array) -> float:
     :param np.array mads: mean absolute deviations for each feature
     :return float: diversity measure
     """
-    if len(cf_vectors) == 0:
+    if len(cf_vectors) < 2:
         return 0
-    num_features = cf_vectors.shape[1]
     sum_distances = 0
+    count = 0
     for i in range(len(cf_vectors)):
         for j in range(i + 1, len(cf_vectors)):
-            sum_distances += get_distance(cf_vectors[i, :], cf_vectors[j, :], mads)
-    return 1 / ((len(cf_vectors) ** 2) * num_features) * sum_distances
+            count += 1
+            sum_distances += get_distance_normalized(
+                cf_vectors[i, :], cf_vectors[j, :], mads
+            )
+    return sum_distances / count
 
 
 def get_count_diversity(cf_vectors: np.array) -> float:
@@ -92,14 +105,15 @@ def get_count_diversity(cf_vectors: np.array) -> float:
     :param np.array cf_vectors: counterfactual vectors
     :return float: count diversity
     """
-    if len(cf_vectors) == 0:
+    if len(cf_vectors) < 2:
         return 0
     sum_norms = 0
-    num_features = cf_vectors.shape[1]
+    count = 0
     for i in range(len(cf_vectors)):
         for j in range(i + 1, len(cf_vectors)):
-            sum_norms += get_l0_norm(cf_vectors[i, :], cf_vectors[j, :])
-    return 1 / (len(cf_vectors) ** 2 * num_features) * sum_norms
+            count += 1
+            sum_norms += get_l0_norm_normalized(cf_vectors[i, :], cf_vectors[j, :])
+    return sum_norms / count
 
 
 def get_valid_ratio(

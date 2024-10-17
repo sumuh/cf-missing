@@ -6,6 +6,9 @@ import sys
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.exceptions import NotFittedError
 
+from ..imputer import Imputer
+from ..utils.data_utils import get_indices_with_missing_values
+
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
 
@@ -64,23 +67,43 @@ class ClassifierTensorFlow:
             verbose=0,
         )
 
-    def predict(self, input: np.array) -> int:
+    def _handle_missing_values(self, input: np.array, X_train: np.array) -> np.array:
+        """Imputes missing values with mean imputation.
+
+        :param np.array X_train: train dataset for calculating means
+        :param np.array input: input with potentially missing values
+        :return np.array: imputed input
+        """
+        indices_with_missing_values = get_indices_with_missing_values(input)
+        if len(indices_with_missing_values) > 0:
+            imputer = Imputer(X_train)
+            return imputer.mean_imputation(input, indices_with_missing_values)
+        else:
+            return input
+
+    def predict(self, input: np.array, X_train: np.array) -> int:
         """Get classification (0/1) for a new instance from trained model.
 
         :param np.array input: 1D input array to predict
+        :param np.array X_train: training data
         :return int: predicted class
         """
-        prediction = self.predict_with_proba(input)
+        input_handled = self._handle_missing_values(input, X_train)
+        prediction = self.predict_with_proba(input_handled, X_train)
         return prediction[0]
 
-    def predict_with_proba(self, input: np.array) -> tuple[int, float]:
+    def predict_with_proba(
+        self, input: np.array, X_train: np.array
+    ) -> tuple[int, float]:
         """Get classification (0/1) and probability of 1 for a new instance from trained model.
 
         :param np.array input: 1D input array to predict
+        :param np.array X_train: training data
         :return tuple[int, float]: tuple with predicted class and probability that predicted class was 1
         """
-        input = np.array(input).reshape(1, -1)
-        input_scaled = self.scaler.transform(input[:, self.predictor_indices])
+        input_handled = self._handle_missing_values(input, X_train)
+        input_handled = np.array(input_handled).reshape(1, -1)
+        input_scaled = self.scaler.transform(input_handled[:, self.predictor_indices])
 
         try:
             prob_positive = self.model.predict(input_scaled, verbose=0)[0][0]

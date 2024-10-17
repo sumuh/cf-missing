@@ -79,9 +79,14 @@ class Imputer:
         self,
         input: np.array,
         indices_with_missing_values: np.array,
-        target_feature: str,
     ) -> np.array:
-        raise NotImplementedError
+        imputed_input = input.copy()
+        for feat_i in indices_with_missing_values:
+            mu, sigma = self._get_fcs_model_predicted_mu_and_sigma_for_feat(
+                feat_i, input
+            )
+            imputed_input[feat_i] = mu
+        return imputed_input
 
     def _get_fcs_model_predicted_mu_and_sigma_for_feat(
         self, feat_i: int, input: np.array

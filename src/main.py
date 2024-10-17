@@ -33,6 +33,7 @@ def make_visualizations(results_file_path: str, visualizations_dir_path: str):
     results_visualizer.runtime_distributions_per_selection_alg_and_n()
     # results_visualizer.mean_vs_multiple_imputation_single_missing_value()
     # results_visualizer.mean_vs_multiple_imputation_multiple_missing_values()
+    # results_visualizer.mean_and_multiple_imputation_lambda_grid_search()
 
 
 def main():
@@ -42,19 +43,22 @@ def main():
     config_file_path = f"{current_file_path}/../config/config.yaml"
 
     # Make results directory
-    # formatted_time_day = current_time.strftime("%d-%m-%Y")
-    # formatted_time_sec = current_time.strftime("%d-%m-%Y-%H-%M-%S")
-    # results_dir = f"{current_file_path}/../evaluation_results/{formatted_time_day}/run_{formatted_time_sec}"
-    # Path(results_dir).mkdir(parents=True)
+    formatted_time_day = current_time.strftime("%d-%m-%Y")
+    formatted_time_sec = current_time.strftime("%d-%m-%Y-%H-%M-%S")
+    results_dir = f"{current_file_path}/../evaluation_results/{formatted_time_day}/run_{formatted_time_sec}"
+    Path(results_dir).mkdir(parents=True)
 
     # Init logger
-    # logger = CfLogger(results_dir)
+    logger = CfLogger(True, results_dir)
 
     # Run evaluations
-    # run_evaluations(results_dir, config_file_path, logger)
+    run_evaluations(results_dir, config_file_path, logger)
+    sys.exit()
 
     # Make visualizations
-    results_dir = f"{current_file_path}/../evaluation_results/starred/run_21-09-2024-17-27-56-n-and-selection-alg"
+    results_dir = (
+        f"{current_file_path}/../evaluation_results/09-10-2024/run_09-10-2024-18-24-13"
+    )
     make_visualizations(f"{results_dir}/results.yaml", results_dir)
 
 

@@ -1,6 +1,7 @@
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+import numpy as np
 from collections import defaultdict
 
 from ..evaluation.evaluation_results_container import (
@@ -11,36 +12,39 @@ from ..evaluation.evaluation_results_container import (
 
 def get_gradient_genetic_colors() -> list[tuple]:
     return [
-        (216 / 255, 172 / 255, 174 / 255),
-        (141 / 255, 211 / 255, 199 / 255),
+        get_custom_palette_colorbrewer_vibrant()[0],
+        get_custom_palette_colorbrewer_vibrant()[1],
     ]
 
 
-def get_naive_greedy_colors() -> list[tuple]:
-    return [(190, 186, 218), (255, 237, 111)]
-
-
-def get_mean_multiple_colors() -> list[tuple]:
+def get_selection_algo_colors() -> list[tuple]:
     return [
-        # (253, 180, 98),
-        (204, 235, 197),
-        (128, 177, 211),
+        get_custom_palette_colorbrewer_vibrant()[2],
+        get_custom_palette_colorbrewer_vibrant()[3],
+    ]
+
+
+def get_imputation_type_colors() -> list[tuple]:
+    return [
+        # get_custom_palette_colorbrewer_vibrant()[4],
+        get_custom_palette_colorbrewer_vibrant_mega()[4],
+        get_custom_palette_colorbrewer_vibrant_mega()[5],
     ]
 
 
 def get_runtime_distribution_colors() -> list[tuple]:
     return [
-        (166 / 255, 206 / 255, 227 / 255),
-        (31 / 255, 120 / 255, 180 / 255),
-        (178 / 255, 223 / 255, 138 / 255),
-        (51 / 255, 160 / 255, 44 / 255),
+        get_custom_palette_colorbrewer_pastel()[1],
+        get_custom_palette_colorbrewer_pastel()[0],
+        get_custom_palette_colorbrewer_pastel()[3],
+        get_custom_palette_colorbrewer_pastel()[2],
     ]
 
 
 def get_custom_palette_colorbrewer_vibrant() -> list[tuple]:
     return [
-        (102 / 255, 194 / 255, 165 / 255),
         (252 / 255, 141 / 255, 98 / 255),
+        (102 / 255, 194 / 255, 165 / 255),
         (141 / 255, 160 / 255, 203 / 255),
         (231 / 255, 138 / 255, 195 / 255),
         (166 / 255, 216 / 255, 84 / 255),
@@ -103,14 +107,14 @@ def get_pretty_title(metric_name: str) -> str:
     :return str: pretty name
     """
     title_dict = {
-        "avg_n_vectors": "Average size",
-        "avg_dist_from_original": "Average distance from original",
-        "avg_diversity": "Average diversity",
-        "avg_count_diversity": "Average count diversity",
-        "avg_diversity_missing_values": "Average diversity (missing values)",
-        "avg_count_diversity_missing_values": "Average count diversity (missing values)",
-        "avg_sparsity": "Average sparsity",
-        "avg_runtime_seconds": "Average runtime (seconds)",
+        "avg_n_vectors": "Size",
+        "avg_dist_from_original": "Distance from original",
+        "avg_diversity": "Diversity",
+        "avg_count_diversity": "Count diversity",
+        "avg_diversity_missing_values": "Diversity within missing feature(s)",
+        "avg_count_diversity_missing_values": "Count diversity within missing feature(s)",
+        "avg_sparsity": "Sparsity",
+        "avg_runtime_seconds": "Runtime (seconds)",
         "coverage": "Coverage",
     }
     return title_dict[metric_name]
@@ -171,6 +175,10 @@ def explore_data(data: pd.DataFrame):
     plt.show()
     show_correlation_matrix(data)
     print(f"{symbol*42}")
+    len_negative = len(data[data["Outcome"] == 0])
+    len_positive = len(data[data["Outcome"] == 1])
+    print(f"Outcome 0: {len_negative}")
+    print(f"Outcome 1: {len_positive}")
 
 
 def save_data_histograms(data: pd.DataFrame, file_path: str):
@@ -181,6 +189,10 @@ def save_data_histograms(data: pd.DataFrame, file_path: str):
     """
     sns.set_palette(get_sns_palette())
     data_long = data.melt(var_name="Feature", value_name="Value")
+    print(data_long)
+
+    # fig, axes = plt.subplots(2, 2)
+    # sns.histplot(data=data, x="Pregnancies")
     g = sns.FacetGrid(
         data_long,
         col="Feature",
@@ -190,23 +202,15 @@ def save_data_histograms(data: pd.DataFrame, file_path: str):
         sharex=False,
         sharey=False,
     )
-    g.map(sns.histplot, "Value", bins=30, kde=False)
+    g.map(sns.histplot, "Value")
     g.set_titles("{col_name}")
 
     for ax in g.axes.flat:
         feature = ax.get_title()
 
         if feature == "Pregnancies":
-            pass
-            # ax.set_xticks(np.arange(0, 18, 2))  # Set x-ticks from 0 to 17 with a step of 1
-            # Align bins with integer values, including 17
-            # min_val = 0
-            # max_val = 18
-            # n_bins = 18
-            # val_width = max_val - min_val
-            # bin_width = 1
-            # ax.set_xticks(np.arange(min_val-bin_width/2, max_val+bin_width/2, bin_width))
-            # ax.set_xlim(-0.5, 17.5)
+            ax.set_xticks(np.arange(0, 18, 1))
+            ax.set_xlim(-0.5, 18)
 
         if feature == "Outcome":
             ax.set_xticks([0, 1])
@@ -214,7 +218,6 @@ def save_data_histograms(data: pd.DataFrame, file_path: str):
 
         # Ensure y-axis only shows integer labels
         ax.yaxis.get_major_locator().set_params(integer=True)
-
     # plt.show()
     plt.savefig(file_path)
 

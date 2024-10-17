@@ -39,21 +39,24 @@ class Classifier:
         """
         self.classifier.train(X_train, y_train)
 
-    def predict(self, input: np.array) -> int:
+    def predict(self, input: np.array, X_train: np.array) -> int:
         """Get classification (0/1) for new instance from trained model.
 
         :param np.array input: 1D input array to predict
+        :param np.array X_train: training data
         :return int: predicted class
         """
-        return self.classifier.predict(input)
+        return self.classifier.predict(input, X_train)
 
-    def predict_with_proba(self, input: np.array) -> tuple[int, float]:
+    def predict_with_proba(
+        self, input: np.array, X_train: np.array
+    ) -> tuple[int, float]:
         """Get classification (0/1) and probability of 1 for a new instance from trained model.
 
         :param np.array input: 1D input array to predict
         :return tuple[int, float]: tuple with predicted class and probability that predicted class was 1
         """
-        return self.classifier.predict_with_proba(input)
+        return self.classifier.predict_with_proba(input, X_train)
 
     def get_classifier(self):
         return self.classifier

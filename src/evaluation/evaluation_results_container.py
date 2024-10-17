@@ -70,7 +70,9 @@ class EvaluationResultsContainer:
     def get_evaluations(self):
         return self.evaluations
 
-    def get_evaluation_for_params(self, param_dict: dict) -> SingleEvaluationResultsContainer:
+    def get_evaluation_for_params(
+        self, param_dict: dict
+    ) -> SingleEvaluationResultsContainer:
         """Finds SingleEvaluationResultsContainer that evaluated the given parameters.
         Raises error if no evaluation or multiple evaluations were found.
 

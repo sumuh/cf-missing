@@ -12,7 +12,7 @@ from .classifiers.classifier_sklearn import ClassifierSklearn
 from .classifiers.classifier_tensorflow import ClassifierTensorFlow
 from .imputer import Imputer
 from .evaluation.evaluation_metrics import (
-    get_distance,
+    get_average_distance_from_original,
     get_diversity,
     get_average_sparsity,
 )
@@ -80,9 +80,9 @@ class CounterfactualGenerator:
                 ),
                 total_CFs=k,
                 desired_class=self.target_class,
-                proximity_weight=self.distance_lambda,
-                diversity_weight=self.diversity_lambda,
-                sparsity_weight=self.sparsity_lambda,
+                # proximity_weight=self.distance_lambda,
+                # diversity_weight=self.diversity_lambda,
+                # sparsity_weight=self.sparsity_lambda,
                 verbose=False,
             )
         elif isinstance(self.classifier.get_classifier(), ClassifierTensorFlow):
@@ -95,8 +95,8 @@ class CounterfactualGenerator:
                     input.reshape(-1, len(input)), columns=predictor_col_names
                 ),
                 total_CFs=k,
-                proximity_weight=self.distance_lambda,
-                diversity_weight=self.diversity_lambda,
+                # proximity_weight=self.distance_lambda,
+                # diversity_weight=self.diversity_lambda,
                 desired_class=self.target_class,
                 verbose=False,
             )
@@ -105,28 +105,29 @@ class CounterfactualGenerator:
                 f"Expected one of [ClassifierSklearn, ClassifierTensorFlow], got {self.classifier}"
             )
         self.enable_stderr()
+        self.logger.log_debug("e1.cf_examples_list[0]")
+        self.logger.log_debug(e1.cf_examples_list[0].final_cfs_df_sparse)
         return e1.cf_examples_list[0].final_cfs_df_sparse.to_numpy()
 
     def _selection_loss_function(
         self,
         candidate_counterfactuals: np.array,
-        input: np.array,
+        comparison_vector: np.array,
         mads: np.array,
     ) -> float:
         """Loss function modified from Mothilal et al. (2020)
         for selecting best set of counterfactuals.
 
         :param np.array candidate_counterfactuals: set of counterfactuals to score
-        :param np.array input: original imputed input
+        :param np.array comparison_vector: vector to compare to (complete vector in case of no missing values)
         :param np.array mads: mean absolute deviationd for each predictor
         :return float: value of loss function
         """
-        dist_sum = 0
-        for cf in candidate_counterfactuals:
-            dist_sum += get_distance(cf, input, mads)
-        dist = dist_sum / len(candidate_counterfactuals)
+        dist = get_average_distance_from_original(
+            comparison_vector, candidate_counterfactuals, mads
+        )
         div = get_diversity(candidate_counterfactuals, mads)
-        sparsity = get_average_sparsity(input, candidate_counterfactuals)
+        sparsity = get_average_sparsity(comparison_vector, candidate_counterfactuals)
         return (
             (self.distance_lambda * dist)
             - (self.diversity_lambda * div)
@@ -136,7 +137,7 @@ class CounterfactualGenerator:
     def _perform_final_selection_naive(
         self,
         counterfactuals: np.array,
-        input: np.array,
+        comparison_vector: np.array,
         final_set_size: int,
         mads: np.array,
     ) -> np.array:
@@ -144,18 +145,18 @@ class CounterfactualGenerator:
         that minimize the loss function: naive approach that iterates over all possible combinations.
 
         :param np.array counterfactuals: counterfactuals
-        :param np.array input: original imputed input
+        :param np.array comparison_vector: vector to compare to (complete vector in case of no missing values)
         :param int final_set_size: number of counterfactuals to return
         :param np.array mads: mean absolute deviations for each predictor
         :return np.array: set of counterfactuals of size final_set_size
         """
         best_loss = float("inf")
         best_set = None
-        if len(counterfactuals) < final_set_size:
+        if len(counterfactuals) <= final_set_size:
             return counterfactuals
         for comb in combinations(counterfactuals, final_set_size):
             current_set = np.array(comb)
-            loss = self._selection_loss_function(current_set, input, mads)
+            loss = self._selection_loss_function(current_set, comparison_vector, mads)
             if loss < best_loss:
                 best_loss = loss
                 best_set = current_set
@@ -163,6 +164,49 @@ class CounterfactualGenerator:
         return best_set
 
     def _perform_final_selection_greedy(
+        self,
+        counterfactuals: np.array,
+        comparison_vector: np.array,
+        final_set_size: int,
+        mads: np.array,
+    ) -> np.array:
+        """Select a limited number of counterfactuals based on those
+        that minimize the loss function: greedy approach.
+
+        :param np.array counterfactuals: counterfactuals
+        :param np.array comparison_vector: vector to compare to (complete vector in case of no missing values)
+        :param int final_set_size: number of counterfactuals to return
+        :param np.array mads: mean absolute deviations for each predictor
+        :return np.array: set of counterfactuals of size final_set_size
+        """
+        if len(counterfactuals) <= final_set_size:
+            return counterfactuals
+        best_set = np.array([])
+        added_cf_indices = set()
+        while len(best_set) < final_set_size:
+            best_loss = float("inf")
+            # Find cf that minimises loss when added to set
+            for row_ind in range(len(counterfactuals)):
+                if row_ind not in added_cf_indices:
+                    candidate = counterfactuals[row_ind, :]
+                    if len(best_set) == 0:
+                        set_with_candidate = np.array([candidate])
+                    else:
+                        set_with_candidate = np.vstack((best_set, candidate))
+
+                    loss_with_candidate = self._selection_loss_function(
+                        set_with_candidate, comparison_vector, mads
+                    )
+                    if loss_with_candidate < best_loss:
+                        best_loss = loss_with_candidate
+                        best_set_with_candidate = set_with_candidate
+                        best_cf_ind = row_ind
+
+            best_set = best_set_with_candidate
+            added_cf_indices.add(best_cf_ind)
+        return best_set
+
+    def _perform_final_selection_greedy_unlimited(
         self,
         counterfactuals: np.array,
         input: np.array,
@@ -235,6 +279,10 @@ class CounterfactualGenerator:
                 [imputer.mean_imputation(input, indices_with_missing_values)]
             )
             imputed = np.repeat(imputed, n, axis=0)
+        elif imputation_type == "regression":
+            imputed = np.array(
+                [imputer.regression_imputation(input, indices_with_missing_values)]
+            )
         else:
             raise RuntimeError(
                 f"Unexpected imputation type '{imputation_type}', expected one of: ['multiple', 'mean']"
@@ -288,19 +336,21 @@ class CounterfactualGenerator:
         imputer = Imputer(X_train, self.hyperparam_opt, True)
         mads = get_feature_mads(X_train)
         if len(indices_with_missing_values) > 0:
-            multiple_imputation_start = time.time()
+            imputation_start = time.time()
             # Evaluate input with missing values
             input_for_explanations = self._perform_imputation(
                 imputer, imputation_type, input, indices_with_missing_values, n
             )
-            multiple_imputation_end = time.time()
-            multiple_imputation_runtime = (
-                multiple_imputation_end - multiple_imputation_start
+            imputation_end = time.time()
+            imputation_runtime = imputation_end - imputation_start
+            selection_algo_comparison_point = imputer.mean_imputation(
+                input, indices_with_missing_values
             )
         else:
             # Evaluate complete input
             input_for_explanations = input.copy()
-            multiple_imputation_runtime = 0
+            imputation_runtime = 0
+            selection_algo_comparison_point = input_for_explanations
 
         counterfactual_generation_start = time.time()
         explanations = self._get_explanations(input_for_explanations, data_pd, k)
@@ -317,7 +367,7 @@ class CounterfactualGenerator:
 
         if len(valid_unique_explanations) == 0:
             return np.array([]), {
-                "multiple_imputation": multiple_imputation_runtime,
+                "imputation": imputation_runtime,
                 "counterfactual_generation": counterfactual_generation_runtime,
                 "filtering": filtering_runtime,
                 "selection": 0,
@@ -326,11 +376,17 @@ class CounterfactualGenerator:
         selection_start = time.time()
         if self.selection_alg == "naive":
             final_explanations = self._perform_final_selection_naive(
-                valid_unique_explanations[:, :-1], input, k, mads
+                valid_unique_explanations[:, :-1],
+                selection_algo_comparison_point,
+                k,
+                mads,
             )
         elif self.selection_alg == "greedy":
             final_explanations = self._perform_final_selection_greedy(
-                valid_unique_explanations[:, :-1], input, mads
+                valid_unique_explanations[:, :-1],
+                selection_algo_comparison_point,
+                k,
+                mads,
             )
         else:
             raise RuntimeError(f"Invalid selection algorithm {self.selection_alg}")
@@ -338,7 +394,7 @@ class CounterfactualGenerator:
         selection_runtime = selection_end - selection_start
 
         return final_explanations, {
-            "multiple_imputation": multiple_imputation_runtime,
+            "imputation": imputation_runtime,
             "counterfactual_generation": counterfactual_generation_runtime,
             "filtering": filtering_runtime,
             "selection": selection_runtime,

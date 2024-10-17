@@ -6,6 +6,8 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.exceptions import NotFittedError
+from ..imputer import Imputer
+from ..utils.data_utils import get_indices_with_missing_values
 
 
 class ClassifierSklearn:
@@ -45,25 +47,45 @@ class ClassifierSklearn:
         """
         self.pipeline.fit(X_train, y_train)
 
-    def predict(self, input: np.array) -> int:
+    def _handle_missing_values(self, input: np.array, X_train: np.array) -> np.array:
+        """Imputes missing values with mean imputation.
+
+        :param np.array input: input with potentially missing values
+        :param np.array X_train: train dataset for calculating means
+        :return np.array: imputed input
+        """
+        indices_with_missing_values = get_indices_with_missing_values(input)
+        if len(indices_with_missing_values) > 0:
+            imputer = Imputer(X_train)
+            return imputer.mean_imputation(input, indices_with_missing_values)
+        else:
+            return input
+
+    def predict(self, input: np.array, X_train: np.array) -> int:
         """Get classification (0/1) for new instance from trained model.
 
         :param np.array input: 1D input array to predict
+        :param np.array X_train: training data
         :return int: predicted class
         """
-        prediction = self.predict_with_proba(input)
+        input_handled = self._handle_missing_values(input, X_train)
+        prediction = self.predict_with_proba(input_handled, X_train)
         return prediction[0]
 
-    def predict_with_proba(self, input: np.array) -> tuple[int, float]:
+    def predict_with_proba(
+        self, input: np.array, X_train: np.array
+    ) -> tuple[int, float]:
         """Get classification (0/1) and probability of 1 for a new instance from trained model.
 
         :param np.array input: 1D input array to predict
+        :param np.array X_train: training data
         :return tuple[int, float]: tuple with predicted class and probability that predicted class was 1
         """
         try:
+            input_handled = self._handle_missing_values(input, X_train)
             if len(input.shape) == 1:
-                input = [input]
-            res = self.pipeline.predict_proba(input)[0]
+                input_handled = [input_handled]
+            res = self.pipeline.predict_proba(input_handled)[0]
         except NotFittedError:
             raise NotFittedError("Classifier.train() must be called before predict()!")
 

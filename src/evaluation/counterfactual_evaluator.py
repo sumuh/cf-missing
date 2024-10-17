@@ -156,7 +156,7 @@ class CounterfactualEvaluator:
         """
         if len(self.indices_with_missing_values_current) > 0:
             # Evaluate input with missing values
-            input = self.test_instance_imputed_current
+            input = self.test_instance_with_missing_values_current
         else:
             # Evaluate complete input
             input = self.test_instance_complete_current
@@ -212,12 +212,16 @@ class CounterfactualEvaluator:
             self.indices_with_missing_values_current = get_indices_with_missing_values(
                 self.test_instance_with_missing_values_current
             )
-            self.test_instance_imputed_current = self._impute_test_instance()
-            prediction = self.classifier.predict(self.test_instance_imputed_current)
+            prediction = self.classifier.predict(
+                self.test_instance_with_missing_values_current, self.X_train_current
+            )
+
         else:
             # Evaluate complete input
             self.indices_with_missing_values_current = np.array([])
-            prediction = self.classifier.predict(self.test_instance_complete_current)
+            prediction = self.classifier.predict(
+                self.test_instance_complete_current, self.X_train_current
+            )
 
         if prediction != self.data_config.target_class:
             # Generate counterfactuals
@@ -227,7 +231,6 @@ class CounterfactualEvaluator:
                 example_df = get_example_df_for_input_with_missing_values(
                     self.test_instance_complete_current,
                     self.test_instance_with_missing_values_current,
-                    self.test_instance_imputed_current,
                     counterfactuals,
                 )
             else:
@@ -241,7 +244,10 @@ class CounterfactualEvaluator:
             )
 
         test_instance_metrics.update(
-            {"num_missing": len(self.indices_with_missing_values_current)}
+            {
+                "num_missing": len(self.indices_with_missing_values_current),
+                "undesired_class": prediction != self.data_config.target_class,
+            }
         )
 
         return (test_instance_metrics, example_df)
@@ -290,7 +296,7 @@ class CounterfactualEvaluator:
 
         def debug_info(info_frequency, row_ind, show_example, metrics):
             if row_ind % info_frequency == 0:
-                self.logger.log_debug(f"Evaluated {row_ind}/{num_rows} rows")
+                print(f"Evaluated {row_ind}/{num_rows} rows")
             # Every info_frequency rows find example to show
             if show_example:
                 if result[1] is not None:
@@ -338,9 +344,9 @@ class CounterfactualEvaluator:
             )
 
         print(f"Evaluated {num_rows}/{num_rows} rows")
-        #histogram_dict = {
+        # histogram_dict = {
         #    metric_name: metric_value
         #    for metric_name, metric_value in metrics.items()
         #    if metric_name in self.evaluation_config.metrics_for_histograms
-        #}
+        # }
         return self._aggregate_results(metrics)

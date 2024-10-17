@@ -70,7 +70,6 @@ class EvaluationRunner:
         aggregated_results = evaluator.perform_evaluation()
         self.logger.log_debug(json.dumps(aggregated_results, indent=2))
         results_container.set_counterfactual_metrics(aggregated_results)
-        #results_container.set_counterfactual_histogram_dict(histogram_dict)
 
         return results_container
 
@@ -244,9 +243,3 @@ class EvaluationRunner:
         self.run_counterfactual_evaluation_with_different_configs(
             f"{self.results_dir}/results.yaml"
         )
-
-        # Evaluate imputation methods
-        # imputer_evaluator = ImputerEvaluator(
-        #    self.data, self.hyperparam_opt, self.evaluation_config.debug
-        # )
-        # imputer_results = imputer_evaluator.run_imputer_evaluation()
