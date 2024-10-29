@@ -34,7 +34,7 @@ data:
 evaluation:
   params:
     classifier: # Possible values: sklearn, tensorflow
-      - tensorflow 
+      #- tensorflow 
       - sklearn
 
     imputation_type:
@@ -73,13 +73,24 @@ evaluation:
     k:
       - 3
 
-    distance_lambda:
-      - 1
+    distance_lambda_generation:
+      - 0.5
+      - 0.2
 
-    diversity_lambda:
-      - 1
+    diversity_lambda_generation:
+      - 1.0
+      - 5.0
 
-    sparsity_lambda:
+    sparsity_lambda_generation:
+      - 0.2
+
+    distance_lambda_selection:
+      - 1.5
+
+    diversity_lambda_selection:
+      - 0.75
+
+    sparsity_lambda_selection:
       - 1
 
     selection_alg:
@@ -105,13 +116,22 @@ evaluation:
     k:
       None
 
-    distance_lambda:
+    distance_lambda_generation:
       None
 
-    diversity_lambda:
+    diversity_lambda_generation:
       None
 
-    sparsity_lambda:
+    sparsity_lambda_generation:
+      None
+
+    distance_lambda_selection:
+      None
+
+    diversity_lambda_selection:
+      None
+
+    sparsity_lambda_selection:
       None
 
     selection_alg:
@@ -132,7 +152,7 @@ evaluation:
 
   runtime_metrics:
     - total
-    - multiple_imputation
+    - imputation
     - counterfactual_generation
     - filtering
     - selection

@@ -633,10 +633,14 @@ class ResultsVisualizer:
         data = []
         for n in all_evaluation_params_dict["n"]:
             for imputation_type in all_evaluation_params_dict["imputation_type"]:
-                for lambda_dist in all_evaluation_params_dict["distance_lambda"]:
-                    for lambda_div in all_evaluation_params_dict["diversity_lambda"]:
+                for lambda_dist in all_evaluation_params_dict[
+                    "distance_lambda_selection"
+                ]:
+                    for lambda_div in all_evaluation_params_dict[
+                        "diversity_lambda_selection"
+                    ]:
                         for lambda_spar in all_evaluation_params_dict[
-                            "sparsity_lambda"
+                            "sparsity_lambda_selection"
                         ]:
                             results_for_all_missing_inds = []
                             for ind_missing in all_evaluation_params_dict[
@@ -652,9 +656,9 @@ class ResultsVisualizer:
                                             "n": n,
                                             "k": 3,
                                             "selection_alg": "greedy",
-                                            "distance_lambda": lambda_dist,
-                                            "diversity_lambda": lambda_div,
-                                            "sparsity_lambda": lambda_spar,
+                                            "distance_lambda_selection": lambda_dist,
+                                            "diversity_lambda_selection": lambda_div,
+                                            "sparsity_lambda_selection": lambda_spar,
                                         }
                                     )
                                 )

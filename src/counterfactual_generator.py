@@ -27,9 +27,12 @@ class CounterfactualGenerator:
         target_class: int,
         target_variable_name: str,
         hyperparam_opt: HyperparamOptimizer,
-        distance_lambda: float,
-        diversity_lambda: float,
-        sparsity_lambda: float,
+        distance_lambda_generation: float,
+        diversity_lambda_generation: float,
+        sparsity_lambda_generation: float,
+        distance_lambda_selection: float,
+        diversity_lambda_selection: float,
+        sparsity_lambda_selection: float,
         selection_alg: str,
         logger: CfLogger,
     ):
@@ -37,9 +40,12 @@ class CounterfactualGenerator:
         self.target_class = target_class
         self.target_variable_name = target_variable_name
         self.hyperparam_opt = hyperparam_opt
-        self.distance_lambda = distance_lambda
-        self.diversity_lambda = diversity_lambda
-        self.sparsity_lambda = sparsity_lambda
+        self.distance_lambda_generation = distance_lambda_generation
+        self.diversity_lambda_generation = diversity_lambda_generation
+        self.sparsity_lambda_generation = sparsity_lambda_generation
+        self.distance_lambda_selection = distance_lambda_selection
+        self.diversity_lambda_selection = diversity_lambda_selection
+        self.sparsity_lambda_selection = sparsity_lambda_selection
         self.selection_alg = selection_alg
         self.logger = logger
 
@@ -80,9 +86,9 @@ class CounterfactualGenerator:
                 ),
                 total_CFs=k,
                 desired_class=self.target_class,
-                # proximity_weight=self.distance_lambda,
-                # diversity_weight=self.diversity_lambda,
-                # sparsity_weight=self.sparsity_lambda,
+                proximity_weight=self.distance_lambda_generation,
+                diversity_weight=self.diversity_lambda_generation,
+                sparsity_weight=self.sparsity_lambda_generation,
                 verbose=False,
             )
         elif isinstance(self.classifier.get_classifier(), ClassifierTensorFlow):
@@ -95,8 +101,8 @@ class CounterfactualGenerator:
                     input.reshape(-1, len(input)), columns=predictor_col_names
                 ),
                 total_CFs=k,
-                # proximity_weight=self.distance_lambda,
-                # diversity_weight=self.diversity_lambda,
+                proximity_weight=self.distance_lambda_generation,
+                diversity_weight=self.diversity_lambda_generation,
                 desired_class=self.target_class,
                 verbose=False,
             )
@@ -129,9 +135,9 @@ class CounterfactualGenerator:
         div = get_diversity(candidate_counterfactuals, mads)
         sparsity = get_average_sparsity(comparison_vector, candidate_counterfactuals)
         return (
-            (self.distance_lambda * dist)
-            - (self.diversity_lambda * div)
-            - (self.sparsity_lambda * sparsity)
+            (self.distance_lambda_selection * dist)
+            - (self.diversity_lambda_selection * div)
+            - (self.sparsity_lambda_selection * sparsity)
         )
 
     def _perform_final_selection_naive(
